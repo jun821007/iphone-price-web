@@ -1,0 +1,7 @@
+# 本機 Supabase 金鑰（GitHub 用 Actions secrets 注入）
+config.js
+
+# 系統 / 編輯器
+.DS_Store
+Thumbs.db
+*.log
