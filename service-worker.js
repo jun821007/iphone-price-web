@@ -1,4 +1,4 @@
-const CACHE_NAME = "iphone-price-web-v7";
+const CACHE_NAME = "iphone-price-web-v8";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,7 +8,12 @@ const ASSETS = [
   "./admin.js",
   "./config.js",
   "./manifest.webmanifest",
-  "./icon.svg",
+  "./favicon.ico",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/favicon-32x32.png",
+  "./icons/favicon-16x16.png",
 ];
 
 self.addEventListener("install", (event) => {
