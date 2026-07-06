@@ -42,13 +42,13 @@
             <label for="newModelName">基礎型號 key</label>
             <input id="newModelName" type="text" placeholder="例如 17promax、AirPodsPro3" />
           </div>
-          <div class="filter-row">
-            <label for="newModelMsrp">建議售價</label>
-            <input id="newModelMsrp" type="number" placeholder="必填" min="1" />
+          <div class="filter-row" id="newModelMsrpRow">
+            <label for="newModelMsrp" id="newModelMsrpLabel">建議售價</label>
+            <input id="newModelMsrp" type="number" placeholder="新機／iPad／配件必填" min="1" />
           </div>
           <button id="addModelBtn" type="button" class="btn-secondary">新增型號</button>
         </div>
-        <p class="muted" style="margin:8px 0 0;font-size:0.85rem">寫入 product_msrp，待審下拉選單會出現新型號（不含容量顏色後綴）。</p>
+        <p id="newModelHint" class="muted" style="margin:8px 0 0;font-size:0.85rem">寫入 product_msrp，待審下拉選單會出現新型號（不含容量顏色後綴）。</p>
       </section>
 
       <section class="card brand-manager">
@@ -78,6 +78,6 @@
       <div id="pendingList" class="pending-list"></div>
     </section>
   </div>
-  <script src="admin.js?v=6"></script>
+  <script src="admin.js?v=7"></script>
 </body>
 </html>

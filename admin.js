@@ -8,6 +8,8 @@ const brandList = document.getElementById("brandList");
 const newModelCategory = document.getElementById("newModelCategory");
 const newModelName = document.getElementById("newModelName");
 const newModelMsrp = document.getElementById("newModelMsrp");
+const newModelMsrpRow = document.getElementById("newModelMsrpRow");
+const newModelHint = document.getElementById("newModelHint");
 const addModelBtn = document.getElementById("addModelBtn");
 const statPending = document.getElementById("statPending");
 const statApproved = document.getElementById("statApproved");
@@ -858,34 +860,54 @@ async function addBrand() {
   await loadPending();
 }
 
+function refreshModelMsrpField() {
+  const category = newModelCategory?.value || "new";
+  const isUsed = category === "used";
+  if (newModelMsrpRow) {
+    newModelMsrpRow.style.display = isUsed ? "none" : "";
+  }
+  if (newModelMsrp) {
+    newModelMsrp.required = !isUsed;
+    if (isUsed) newModelMsrp.value = "";
+  }
+  if (newModelHint) {
+    newModelHint.textContent = isUsed
+      ? "二手寫入型號目錄即可，不需建議售價；待審下拉會出現新型號。"
+      : "寫入 product_msrp，待審下拉選單會出現新型號（不含容量顏色後綴）；新機／iPad／配件需填建議售價。";
+  }
+}
+
 async function addBaseModel() {
   const category = newModelCategory?.value || "new";
   const baseModel = normalizeKey(newModelName?.value || "");
-  const msrp = Number(newModelMsrp?.value);
+  const isUsed = category === "used";
+  const msrpRaw = newModelMsrp?.value;
+  const msrp = msrpRaw ? Number(msrpRaw) : null;
   if (!baseModel) {
     alert("請輸入型號 key");
     return;
   }
-  if (!msrp || msrp <= 0) {
-    alert("請填建議售價（正整數）");
+  if (!isUsed && (!msrp || msrp <= 0)) {
+    alert("新機／iPad／配件請填建議售價（正整數）");
     return;
   }
   const msrpTable = table("SUPABASE_MSRP_TABLE");
   const effectiveFrom = new Date().toISOString().slice(0, 10);
-  const { error } = await supabaseClient.from(msrpTable).upsert({
+  const row = {
     model_key: baseModel,
     category,
-    msrp,
-    note: "admin catalog",
+    msrp: isUsed ? null : msrp,
+    note: isUsed ? "二手型號目錄（無建議售價）" : "admin catalog",
     effective_from: effectiveFrom,
     updated_at: new Date().toISOString(),
-  }, { onConflict: "model_key,effective_from" });
+  };
+  const { error } = await supabaseClient.from(msrpTable).upsert(row, { onConflict: "model_key,effective_from" });
   if (error) {
     alert(error.message);
     return;
   }
   newModelName.value = "";
-  newModelMsrp.value = "";
+  if (newModelMsrp) newModelMsrp.value = "";
   await loadModelOptions();
   await loadPending();
   alert(`已新增型號 ${baseModel}（${category}）`);
@@ -903,6 +925,7 @@ async function initAdmin() {
       });
     }
     await loadTaxonomy();
+    refreshModelMsrpField();
     await loadModelOptions();
     await loadPendingDates();
     await loadPending();
@@ -917,6 +940,7 @@ refreshPendingBtn?.addEventListener("click", () => loadPending().catch((e) => al
 dedupPendingBtn?.addEventListener("click", () => dedupePendingForDate().catch((e) => alert(e.message)));
 addBrandBtn?.addEventListener("click", () => addBrand().catch((e) => alert(e.message)));
 addModelBtn?.addEventListener("click", () => addBaseModel().catch((e) => alert(e.message)));
+newModelCategory?.addEventListener("change", refreshModelMsrpField);
 
 pendingList.addEventListener("change", (event) => {
   const card = event.target.closest(".pending-card");
