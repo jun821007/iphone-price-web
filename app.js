@@ -114,25 +114,36 @@ function destroyCharts() {
   }
 }
 
-function buildChart(ctx, label, labels, data, color, yTickFormatter) {
+function buildHighLowChart(ctx, labels, highs, lows, colors, yTickFormatter) {
   return new Chart(ctx, {
     type: "line",
     data: {
       labels,
-      datasets: [{
-        label,
-        data,
-        borderColor: color,
-        backgroundColor: `${color}22`,
-        tension: 0.2,
-        pointRadius: 2,
-        fill: true,
-      }],
+      datasets: [
+        {
+          label: "最高",
+          data: highs,
+          borderColor: colors.high,
+          backgroundColor: `${colors.high}22`,
+          tension: 0.2,
+          pointRadius: 3,
+          fill: false,
+        },
+        {
+          label: "最低",
+          data: lows,
+          borderColor: colors.low,
+          backgroundColor: `${colors.low}22`,
+          tension: 0.2,
+          pointRadius: 3,
+          fill: false,
+        },
+      ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      plugins: { legend: { display: true, position: "top" } },
       scales: {
         y: {
           ticks: {
@@ -142,6 +153,25 @@ function buildChart(ctx, label, labels, data, color, yTickFormatter) {
       },
     },
   });
+}
+
+function aggregateDaily(ticks) {
+  const byDay = new Map();
+  for (const t of ticks) {
+    const day = String(t.quote_date || t.quoted_at || "").slice(0, 10);
+    if (!day || t.price == null) continue;
+    const bucket = byDay.get(day) || { high: -Infinity, low: Infinity, discountHigh: null, discountLow: null };
+    bucket.high = Math.max(bucket.high, t.price);
+    bucket.low = Math.min(bucket.low, t.price);
+    const zhe = parseDiscountNumber(t.discount_zhe);
+    if (zhe != null) {
+      bucket.discountHigh = bucket.discountHigh == null ? zhe : Math.max(bucket.discountHigh, zhe);
+      bucket.discountLow = bucket.discountLow == null ? zhe : Math.min(bucket.discountLow, zhe);
+    }
+    byDay.set(day, bucket);
+  }
+  const days = [...byDay.keys()].sort();
+  return days.map((day) => ({ day, ...byDay.get(day) }));
 }
 
 async function openDetailPanel(row) {
@@ -161,7 +191,7 @@ async function openDetailPanel(row) {
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
   const { data, error } = await supabaseClient
     .from(ticksTable)
-    .select("quoted_at,price,discount_zhe,chat_name,sender_name")
+    .select("quoted_at,quote_date,price,discount_zhe,chat_name,sender_name")
     .eq("category", row.category)
     .eq("model_key", row.model_key)
     .eq("trade_side", row.trade_side || "sell")
@@ -179,13 +209,25 @@ async function openDetailPanel(row) {
     return;
   }
 
-  const labels = ticks.map((t) => formatShortTime(t.quoted_at));
-  const prices = ticks.map((t) => t.price);
-  const discounts = ticks.map((t) => parseDiscountNumber(t.discount_zhe));
+  const daily = aggregateDaily(ticks);
+  const labels = daily.map((d) => d.day.slice(5));
+  const highs = daily.map((d) => d.high);
+  const lows = daily.map((d) => d.low);
 
-  priceChart = buildChart(priceChartCanvas, "價格", labels, prices, "#2563eb", (v) => formatPrice(v));
-  if (discounts.some((v) => v != null)) {
-    discountChart = buildChart(discountChartCanvas, "折數", labels, discounts, "#047857", (v) => `${v}折`);
+  priceChart = buildHighLowChart(
+    priceChartCanvas, labels, highs, lows,
+    { high: "#dc2626", low: "#2563eb" },
+    (v) => formatPrice(v),
+  );
+
+  const discountHighs = daily.map((d) => d.discountHigh);
+  const discountLows = daily.map((d) => d.discountLow);
+  if (discountHighs.some((v) => v != null)) {
+    discountChart = buildHighLowChart(
+      discountChartCanvas, labels, discountHighs, discountLows,
+      { high: "#dc2626", low: "#047857" },
+      (v) => `${v}折`,
+    );
   }
 
   const recent = [...ticks].reverse().slice(0, 15);
