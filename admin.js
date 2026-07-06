@@ -1,9 +1,19 @@
 const pendingDate = document.getElementById("pendingDate");
 const refreshPendingBtn = document.getElementById("refreshPendingBtn");
+const dedupPendingBtn = document.getElementById("dedupPendingBtn");
 const pendingList = document.getElementById("pendingList");
 const newBrandName = document.getElementById("newBrandName");
 const addBrandBtn = document.getElementById("addBrandBtn");
 const brandList = document.getElementById("brandList");
+const newModelCategory = document.getElementById("newModelCategory");
+const newModelName = document.getElementById("newModelName");
+const newModelMsrp = document.getElementById("newModelMsrp");
+const addModelBtn = document.getElementById("addModelBtn");
+const statPending = document.getElementById("statPending");
+const statApproved = document.getElementById("statApproved");
+const statRejected = document.getElementById("statRejected");
+const statAutoHint = document.getElementById("statAutoHint");
+const autoApproveLearned = document.getElementById("autoApproveLearned");
 
 const CATEGORY_OPTIONS = [
   { value: "new", label: "新機" },
@@ -23,6 +33,14 @@ const CAPACITY_OPTIONS = ["", "64", "128", "256", "512", "1T", "2T"];
 const COLOR_OPTIONS = ["", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "星光", "午夜"];
 
 const COLOR_RE = /(黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|星光|午夜)$/;
+
+const PHONE_COLOR_TOKENS = ["星光", "午夜", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰"];
+const COLOR_ALIASES = [
+  ["太空黑", "黑"], ["深空黑", "黑"], ["午夜黑", "黑"],
+  ["雲白", "白"], ["雲白色", "白"],
+  ["原色", "原"], ["原色鈦", "鈦"],
+  ["銀橘色", "銀橘"], ["橘銀色", "橘銀"],
+];
 
 const FALLBACK_DEVICE_TYPES = [
   { code: "phone", label: "手機" },
@@ -44,6 +62,87 @@ let catalogByCategory = {};
 let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
 let pendingRowsById = {};
+let approvedBindingMap = new Map();
+const AUTO_APPROVE_KEY = "audit_auto_approve_learned";
+
+function pendingLineSignature(rawLine) {
+  return normalizeKey(
+    (rawLine || "")
+      .replace(/\$?\s*\d{4,6}\b/g, "")
+      .trim(),
+  );
+}
+
+function autoApproveEnabled() {
+  if (!autoApproveLearned) return true;
+  const stored = localStorage.getItem(AUTO_APPROVE_KEY);
+  if (stored === null) return autoApproveLearned.checked;
+  return stored === "1";
+}
+
+async function loadApprovedBindings() {
+  approvedBindingMap = new Map();
+  const { data, error } = await supabaseClient
+    .from(table("SUPABASE_PENDING_TABLE"))
+    .select("id,raw_line,bound_category,bound_model_key,trade_side")
+    .eq("status", "approved")
+    .not("bound_model_key", "is", null)
+    .order("reviewed_at", { ascending: false })
+    .limit(3000);
+  if (error || !data?.length) return;
+
+  const ids = data.map((row) => row.id);
+  const { data: overrides } = await supabaseClient
+    .from("classification_overrides")
+    .select("target_id,device_type_code,brand_code,condition_state,model_display,capacity,color")
+    .eq("target_table", "pending_quotes")
+    .in("target_id", ids);
+
+  const overrideById = new Map((overrides || []).map((row) => [row.target_id, row]));
+
+  for (const row of data) {
+    const sig = pendingLineSignature(row.raw_line);
+    if (!sig || approvedBindingMap.has(sig)) continue;
+    const ov = overrideById.get(row.id);
+    const parts = splitModelKey(row.bound_model_key || "");
+    const category = row.bound_category || "new";
+    const cls = classifySpec(category, row.bound_model_key || "");
+    const parsedColors = extractColorsFromRawLine(row.raw_line);
+    approvedBindingMap.set(sig, {
+      category,
+      baseModel: ov?.model_display || parts.model,
+      capacity: ov?.capacity || parts.capacity,
+      color: ov?.color || parts.color || parsedColors[0] || "",
+      parsedColors,
+      deviceType: ov?.device_type_code || cls.deviceType,
+      brand: ov?.brand_code || cls.brand,
+      condition: ov?.condition_state || cls.condition,
+      autoMatched: true,
+      learnedFrom: row.id,
+    });
+  }
+}
+
+async function updateAuditStats(date) {
+  if (!date) {
+    if (statPending) statPending.textContent = "—";
+    if (statApproved) statApproved.textContent = "—";
+    if (statRejected) statRejected.textContent = "—";
+    return;
+  }
+  const { data, error } = await supabaseClient
+    .from(table("SUPABASE_PENDING_TABLE"))
+    .select("status")
+    .eq("quote_date", date);
+  if (error) throw error;
+  const rows = data || [];
+  const pending = rows.filter((r) => r.status === "pending").length;
+  const approved = rows.filter((r) => r.status === "approved").length;
+  const rejected = rows.filter((r) => r.status === "rejected").length;
+  if (statPending) statPending.textContent = String(pending);
+  if (statApproved) statApproved.textContent = String(approved);
+  if (statRejected) statRejected.textContent = String(rejected);
+}
 
 function table(name) {
   return window[name] || name;
@@ -51,6 +150,53 @@ function table(name) {
 
 function initClient() {
   supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+}
+
+function normalizeColorAliases(text) {
+  let out = String(text || "");
+  for (const [alias, canonical] of COLOR_ALIASES) {
+    out = out.split(alias).join(canonical);
+  }
+  return out;
+}
+
+function splitColorCluster(text) {
+  const raw = normalizeColorAliases((text || "").trim());
+  if (!raw || /不限色|全色|各色/.test(raw)) return [];
+  const found = [];
+  for (const part of raw.split(/[/、，,\s+]+/)) {
+    if (!part || /不限色|全色|各色/.test(part)) continue;
+    let pos = 0;
+    while (pos < part.length) {
+      let matched = "";
+      for (const token of [...PHONE_COLOR_TOKENS].sort((a, b) => b.length - a.length)) {
+        if (part.startsWith(token, pos)) {
+          matched = token;
+          break;
+        }
+      }
+      if (matched) {
+        if (!found.includes(matched)) found.push(matched);
+        pos += matched.length;
+      } else {
+        pos += 1;
+      }
+    }
+  }
+  return found;
+}
+
+function extractColorsFromRawLine(rawLine) {
+  const line = normalizeColorAliases(rawLine || "");
+  const withoutPrice = line.replace(/\$?\s*\d{4,6}\b/g, " ").trim();
+  const capMatch = withoutPrice.match(/(\d+)\s*[gG]\s*([^\d$]+)/);
+  if (capMatch) {
+    const colors = splitColorCluster(capMatch[2]);
+    if (colors.length) return colors;
+  }
+  const tailMatch = withoutPrice.match(/([銀橘藍白黑金綠黃紫粉鈦原灰星光午夜\/、，]+)\s*$/);
+  if (tailMatch) return splitColorCluster(tailMatch[1]);
+  return [];
 }
 
 function splitModelKey(modelKey) {
@@ -116,11 +262,16 @@ function renderBrandList() {
 }
 
 async function loadModelOptions() {
-  const { data, error } = await supabaseClient
-    .from(table("SUPABASE_TABLE"))
-    .select("category,model_key,model,capacity,color,msrp")
-    .order("model_key");
+  const msrpTable = table("SUPABASE_MSRP_TABLE") || "product_msrp";
+  const [{ data, error }, { data: msrpRows, error: msrpError }] = await Promise.all([
+    supabaseClient
+      .from(table("SUPABASE_TABLE"))
+      .select("category,model_key,model,capacity,color,msrp")
+      .order("model_key"),
+    supabaseClient.from(msrpTable).select("category,model_key,msrp").order("model_key"),
+  ]);
   if (error) throw error;
+  if (msrpError && msrpError.code !== "42P01") throw msrpError;
   const seen = new Set();
   modelOptions = [];
   for (const row of data || []) {
@@ -128,6 +279,23 @@ async function loadModelOptions() {
     if (seen.has(key)) continue;
     seen.add(key);
     modelOptions.push(row);
+  }
+  for (const row of msrpRows || []) {
+    const category = row.category || "new";
+    const modelKey = (row.model_key || "").trim();
+    if (!modelKey) continue;
+    const key = `${category}|${modelKey}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const parts = splitModelKey(modelKey);
+    modelOptions.push({
+      category,
+      model_key: modelKey,
+      model: parts.model || modelKey,
+      capacity: parts.capacity || "",
+      color: parts.color || "",
+      msrp: row.msrp || null,
+    });
   }
   buildCatalogIndex(modelOptions);
 }
@@ -184,6 +352,17 @@ function guessCategory(rawLine) {
 }
 
 function guessBinding(rawLine) {
+  const parsedColors = extractColorsFromRawLine(rawLine);
+  const sig = pendingLineSignature(rawLine);
+  const learned = approvedBindingMap.get(sig);
+  if (learned) {
+    return {
+      ...learned,
+      parsedColors: parsedColors.length ? parsedColors : learned.parsedColors,
+      autoMatched: true,
+    };
+  }
+
   const compact = (rawLine || "").toLowerCase().replace(/\s/g, "");
   for (const row of modelOptions) {
     const keyCompact = row.model_key.toLowerCase().replace(/\s/g, "");
@@ -196,7 +375,8 @@ function guessBinding(rawLine) {
         category,
         baseModel: parts.model,
         capacity: row.capacity || parts.capacity,
-        color: row.color || parts.color,
+        color: row.color || parts.color || parsedColors[0] || "",
+        parsedColors,
         deviceType: cls.deviceType,
         brand: cls.brand,
         condition: cls.condition,
@@ -205,15 +385,35 @@ function guessBinding(rawLine) {
   }
   const category = guessCategory(rawLine);
   const cls = classifySpec(category, compact);
+  const capMatch = (rawLine || "").match(/(\d+)\s*[gG]/i);
+  let baseModel = "";
+  const phoneMatch = compact.match(/(1[1-7])(promax|pro|plus|mini|air|e)?/);
+  if (phoneMatch) {
+    baseModel = phoneMatch[1] + (phoneMatch[2] || "");
+  }
   return {
     category,
-    baseModel: "",
-    capacity: "",
-    color: "",
+    baseModel,
+    capacity: capMatch ? capMatch[1] : "",
+    color: parsedColors[0] || "",
+    parsedColors,
     deviceType: cls.deviceType,
     brand: cls.brand,
     condition: cls.condition,
   };
+}
+
+function dualColorBlock(parsedColors) {
+  if (!parsedColors || parsedColors.length < 2) return "";
+  const label = parsedColors.join("、");
+  return `
+    <div class="dual-color-box">
+      <strong>偵測雙色：${label}</strong>
+      <label class="dual-color-check">
+        <input type="checkbox" class="bind-dual-color" checked />
+        核准時拆成 ${parsedColors.length} 筆（同色同價，各一個 model_key）
+      </label>
+    </div>`;
 }
 
 function resolveModelBinding(category, baseModel, capacity, color) {
@@ -261,6 +461,11 @@ function formatSenderLabel(row) {
   return { who, group };
 }
 
+function learnedBadge(guess) {
+  if (!guess?.autoMatched) return "";
+  return '<div class="learned-badge">曾核准過 · 已自動帶入綁定</div>';
+}
+
 function renderPending(rows) {
   pendingRowsById = {};
   if (!rows.length) {
@@ -273,14 +478,17 @@ function renderPending(rows) {
     const side = row.trade_side === "buy" ? "買單" : "賣單";
     const { who, group } = formatSenderLabel(row);
     const guess = guessBinding(row.raw_line || "");
+    const parsedColorsAttr = (guess.parsedColors || []).join(",");
     return `
-    <article class="card pending-card" data-id="${row.id}" data-trade-side="${row.trade_side || "sell"}">
+    <article class="card pending-card" data-id="${row.id}" data-trade-side="${row.trade_side || "sell"}" data-parsed-colors="${parsedColorsAttr}">
       <div class="pending-meta">#${row.id} · ${side} · ${who}</div>
       <div class="pending-sub">${group || "（群組未知）"}</div>
       <pre class="pending-text">${row.raw_line}</pre>
       <div class="pending-price">偵測價格：${row.detected_price ?? "—"}</div>
+      ${learnedBadge(guess)}
+      ${dualColorBlock(guess.parsedColors)}
       <div class="pending-actions">
-        <p class="muted" style="margin:0 0 8px;font-size:0.85rem">階層分類（任務三/四）</p>
+        <p class="muted" style="margin:0 0 8px;font-size:0.85rem">階層分類</p>
         <div class="pending-bind-grid">
           <label>設備${deviceTypeSelect(guess.deviceType)}</label>
           <label>品牌${brandSelect(guess.brand)}</label>
@@ -312,6 +520,47 @@ function refreshCascade(card, changed) {
   if (modelLabel) modelLabel.innerHTML = `型號${baseModelSelect(category, current)}`;
 }
 
+async function dedupePendingForDate() {
+  const date = pendingDate.value;
+  if (!date) return;
+  const { data, error } = await supabaseClient
+    .from(table("SUPABASE_PENDING_TABLE"))
+    .select("id,raw_line,detected_price")
+    .eq("quote_date", date)
+    .eq("status", "pending")
+    .order("id");
+  if (error) throw error;
+  const groups = new Map();
+  for (const row of data || []) {
+    const line = (row.raw_line || "").trim();
+    if (!line) continue;
+    if (!groups.has(line)) groups.set(line, []);
+    groups.get(line).push(row);
+  }
+  const toDelete = [];
+  for (const items of groups.values()) {
+    if (items.length <= 1) continue;
+    items.sort((a, b) => (a.detected_price ? 0 : 1) - (b.detected_price ? 0 : 1) || a.id - b.id);
+    toDelete.push(...items.slice(1).map((r) => r.id));
+  }
+  if (!toDelete.length) {
+    alert("本日沒有重複待審");
+    return;
+  }
+  if (!confirm(`將刪除本日重複待審 ${toDelete.length} 筆，保留 ${groups.size} 筆唯一內容。確定？`)) return;
+  for (let i = 0; i < toDelete.length; i += 200) {
+    const chunk = toDelete.slice(i, i + 200);
+    const { error: delErr } = await supabaseClient
+      .from(table("SUPABASE_PENDING_TABLE"))
+      .delete()
+      .in("id", chunk);
+    if (delErr) throw delErr;
+  }
+  alert(`已刪除 ${toDelete.length} 筆重複`);
+  await loadPendingDates();
+  await loadPending();
+}
+
 async function loadPendingDates() {
   const { data, error } = await supabaseClient
     .from(table("SUPABASE_PENDING_TABLE"))
@@ -329,8 +578,11 @@ async function loadPending() {
   const date = pendingDate.value;
   if (!date) {
     pendingList.innerHTML = '<div class="card muted">無待審核日期</div>';
+    await updateAuditStats(null);
     return;
   }
+
+  await loadApprovedBindings();
   const { data, error } = await supabaseClient
     .from(table("SUPABASE_PENDING_TABLE"))
     .select("*")
@@ -338,7 +590,22 @@ async function loadPending() {
     .eq("status", "pending")
     .order("id", { ascending: false });
   if (error) throw error;
-  renderPending(data || []);
+
+  const autoCount = await autoApproveLearnedRows(data || []);
+  if (statAutoHint) {
+    statAutoHint.textContent = autoCount > 0 ? `本輪自動核准 ${autoCount} 筆` : "";
+  }
+
+  const { data: remaining, error: remainError } = await supabaseClient
+    .from(table("SUPABASE_PENDING_TABLE"))
+    .select("*")
+    .eq("quote_date", date)
+    .eq("status", "pending")
+    .order("id", { ascending: false });
+  if (remainError) throw remainError;
+
+  await updateAuditStats(date);
+  renderPending(remaining || []);
 }
 
 async function saveClassificationOverride(rowId, deviceType, brand, condition, binding) {
@@ -381,34 +648,13 @@ async function insertQuoteTick(pendingRow, binding, bindPrice, tradeSide, device
   }, { onConflict: "message_id,category,model_key,price,trade_side" });
 }
 
-async function approvePending(card, rowId) {
-  const pendingRow = pendingRowsById[rowId];
-  const deviceType = card.querySelector(".bind-device-type").value;
-  const brand = card.querySelector(".bind-brand").value;
-  const condition = card.querySelector(".bind-condition").value;
-  const category = card.querySelector(".bind-category").value;
-  const baseModel = card.querySelector(".bind-base-model").value;
-  const capacity = card.querySelector(".bind-capacity").value;
-  const color = card.querySelector(".bind-color").value;
-  const bindPrice = Number(card.querySelector(".bind-price").value);
-  const binding = resolveModelBinding(category, baseModel, capacity, color);
-
-  if (!binding || !bindPrice) {
-    alert("請選擇分類、型號並填價格");
-    return;
-  }
-
-  const { model_key, model } = binding;
-  const date = pendingDate.value;
-  const now = new Date().toISOString();
-  const tradeSide = card.dataset.tradeSide === "buy" ? "buy" : "sell";
-
+async function upsertApprovedPrice(date, category, binding, bindPrice, tradeSide, deviceType, brand, condition, pendingRow, now) {
   const { data: existing } = await supabaseClient
     .from(table("SUPABASE_TABLE"))
     .select("id,price_stats,total_quotes,trade_side")
     .eq("quote_date", date)
     .eq("category", category)
-    .eq("model_key", model_key)
+    .eq("model_key", binding.model_key)
     .eq("trade_side", tradeSide)
     .maybeSingle();
 
@@ -432,8 +678,8 @@ async function approvePending(card, rowId) {
   await supabaseClient.from(table("SUPABASE_TABLE")).upsert({
     quote_date: date,
     category,
-    model_key,
-    model,
+    model_key: binding.model_key,
+    model: binding.model,
     capacity: binding.capacity,
     color: binding.color,
     trade_side: tradeSide,
@@ -454,16 +700,118 @@ async function approvePending(card, rowId) {
   if (pendingRow) {
     await insertQuoteTick(pendingRow, binding, bindPrice, tradeSide, deviceType, brand, condition, date, now);
   }
-  await saveClassificationOverride(rowId, deviceType, brand, condition, binding);
+}
+
+async function executeApproval(pendingRow, options) {
+  const {
+    deviceType,
+    brand,
+    condition,
+    category,
+    baseModel,
+    capacity,
+    colorsToUse,
+    bindPrice,
+    tradeSide,
+  } = options;
+
+  const date = pendingDate.value;
+  const now = new Date().toISOString();
+  let lastBinding = null;
+
+  for (const color of colorsToUse) {
+    const binding = resolveModelBinding(category, baseModel, capacity, color);
+    if (!binding) throw new Error("型號綁定失敗");
+    await upsertApprovedPrice(date, category, binding, bindPrice, tradeSide, deviceType, brand, condition, pendingRow, now);
+    lastBinding = binding;
+  }
+
+  if (lastBinding) {
+    await saveClassificationOverride(pendingRow.id, deviceType, brand, condition, lastBinding);
+  }
 
   await supabaseClient.from(table("SUPABASE_PENDING_TABLE")).update({
     status: "approved",
     bound_category: category,
-    bound_model_key: model_key,
+    bound_model_key: lastBinding?.model_key || "",
     reviewed_at: now,
     updated_at: now,
-  }).eq("id", rowId);
+  }).eq("id", pendingRow.id);
 
+  const sig = pendingLineSignature(pendingRow.raw_line);
+  if (sig) {
+    approvedBindingMap.set(sig, {
+      category,
+      baseModel,
+      capacity,
+      color: colorsToUse[colorsToUse.length - 1] || "",
+      parsedColors: colorsToUse.length >= 2 ? colorsToUse : extractColorsFromRawLine(pendingRow.raw_line),
+      deviceType,
+      brand,
+      condition,
+      autoMatched: true,
+    });
+  }
+}
+
+function buildApprovalOptions(pendingRow, guess, overrides = {}) {
+  const parsedColors = guess.parsedColors || extractColorsFromRawLine(pendingRow.raw_line);
+  const dualEnabled = overrides.dualEnabled ?? (parsedColors.length >= 2);
+  const colorsToUse = dualEnabled && parsedColors.length >= 2
+    ? parsedColors
+    : [overrides.color || guess.color || parsedColors[0] || ""];
+  return {
+    deviceType: overrides.deviceType || guess.deviceType || "phone",
+    brand: overrides.brand || guess.brand || "apple",
+    condition: overrides.condition || guess.condition || "new",
+    category: overrides.category || guess.category || "new",
+    baseModel: overrides.baseModel || guess.baseModel,
+    capacity: overrides.capacity || guess.capacity || "",
+    colorsToUse,
+    bindPrice: Number(overrides.bindPrice ?? pendingRow.detected_price),
+    tradeSide: pendingRow.trade_side === "buy" ? "buy" : "sell",
+  };
+}
+
+async function autoApproveLearnedRows(rows) {
+  if (!autoApproveEnabled()) return 0;
+  let count = 0;
+  for (const row of rows) {
+    const guess = guessBinding(row.raw_line || "");
+    if (!guess.autoMatched || !guess.baseModel || !row.detected_price) continue;
+    try {
+      const options = buildApprovalOptions(row, guess);
+      await executeApproval(row, options);
+      count += 1;
+    } catch (error) {
+      console.warn("auto approve failed", row.id, error);
+    }
+  }
+  return count;
+}
+
+async function approvePending(card, rowId) {
+  const pendingRow = pendingRowsById[rowId];
+  const parsedColors = (card.dataset.parsedColors || "").split(",").filter(Boolean);
+  const dualEnabled = card.querySelector(".bind-dual-color")?.checked;
+  const options = buildApprovalOptions(pendingRow, guessBinding(pendingRow.raw_line || ""), {
+    deviceType: card.querySelector(".bind-device-type").value,
+    brand: card.querySelector(".bind-brand").value,
+    condition: card.querySelector(".bind-condition").value,
+    category: card.querySelector(".bind-category").value,
+    baseModel: card.querySelector(".bind-base-model").value,
+    capacity: card.querySelector(".bind-capacity").value,
+    color: card.querySelector(".bind-color").value,
+    bindPrice: card.querySelector(".bind-price").value,
+    dualEnabled: dualEnabled && parsedColors.length >= 2,
+  });
+
+  if (!options.baseModel || !options.bindPrice) {
+    alert("請選擇型號並填價格");
+    return;
+  }
+
+  await executeApproval(pendingRow, options);
   await loadPending();
 }
 
@@ -475,6 +823,7 @@ async function rejectPending(rowId) {
     updated_at: now,
   }).eq("id", rowId);
   await loadPending();
+  await updateAuditStats(pendingDate.value);
 }
 
 async function addBrand() {
@@ -499,9 +848,50 @@ async function addBrand() {
   await loadPending();
 }
 
+async function addBaseModel() {
+  const category = newModelCategory?.value || "new";
+  const baseModel = normalizeKey(newModelName?.value || "");
+  const msrp = Number(newModelMsrp?.value);
+  if (!baseModel) {
+    alert("請輸入型號 key");
+    return;
+  }
+  if (!msrp || msrp <= 0) {
+    alert("請填建議售價（正整數）");
+    return;
+  }
+  const msrpTable = table("SUPABASE_MSRP_TABLE") || "product_msrp";
+  const effectiveFrom = new Date().toISOString().slice(0, 10);
+  const { error } = await supabaseClient.from(msrpTable).upsert({
+    model_key: baseModel,
+    category,
+    msrp,
+    note: "admin catalog",
+    effective_from: effectiveFrom,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "model_key,effective_from" });
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  newModelName.value = "";
+  newModelMsrp.value = "";
+  await loadModelOptions();
+  await loadPending();
+  alert(`已新增型號 ${baseModel}（${category}）`);
+}
+
 async function initAdmin() {
   try {
     initClient();
+    if (autoApproveLearned) {
+      const stored = localStorage.getItem(AUTO_APPROVE_KEY);
+      if (stored !== null) autoApproveLearned.checked = stored === "1";
+      autoApproveLearned.addEventListener("change", () => {
+        localStorage.setItem(AUTO_APPROVE_KEY, autoApproveLearned.checked ? "1" : "0");
+        loadPending().catch((e) => alert(e.message));
+      });
+    }
     await loadTaxonomy();
     await loadModelOptions();
     await loadPendingDates();
@@ -514,7 +904,9 @@ async function initAdmin() {
 initAdmin();
 
 refreshPendingBtn?.addEventListener("click", () => loadPending().catch((e) => alert(e.message)));
+dedupPendingBtn?.addEventListener("click", () => dedupePendingForDate().catch((e) => alert(e.message)));
 addBrandBtn?.addEventListener("click", () => addBrand().catch((e) => alert(e.message)));
+addModelBtn?.addEventListener("click", () => addBaseModel().catch((e) => alert(e.message)));
 
 pendingList.addEventListener("change", (event) => {
   const card = event.target.closest(".pending-card");
@@ -536,4 +928,7 @@ pendingList.addEventListener("click", async (event) => {
   }
 });
 
-pendingDate.addEventListener("change", () => loadPending());
+pendingDate.addEventListener("change", () => {
+  if (statAutoHint) statAutoHint.textContent = "";
+  loadPending();
+});

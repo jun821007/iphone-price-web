@@ -428,6 +428,54 @@ th {
   color: #1d4ed8;
 }
 
+.admin-header {
+  align-items: flex-start;
+}
+
+.admin-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audit-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  justify-content: flex-end;
+  text-align: right;
+  font-size: 0.85rem;
+  color: var(--muted);
+  max-width: 100%;
+}
+
+.audit-stat strong {
+  color: var(--accent-dark);
+  font-size: 1.05rem;
+  margin-left: 2px;
+}
+
+.auto-approve-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.learned-badge {
+  display: inline-block;
+  margin: 8px 0 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .admin-title {
   margin: 0;
   font-size: 1.2rem;

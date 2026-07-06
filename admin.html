@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>VIP 審核後台</title>
+  <title>審計後台</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="styles.css" />
@@ -12,12 +12,45 @@
 </head>
 <body>
   <div class="page">
-    <header class="header">
-      <h1 class="admin-title">VIP 審核後台</h1>
-      <a class="admin-link" href="index.html">← 回報價查詢</a>
+    <header class="header admin-header">
+      <div class="admin-header-left">
+        <h1 class="admin-title">審計後台</h1>
+        <a class="admin-link" href="index.html">← 回報價查詢</a>
+      </div>
+      <div id="auditStats" class="audit-stats" aria-live="polite">
+        <span class="audit-stat">待審 <strong id="statPending">—</strong></span>
+        <span class="audit-stat">已核准 <strong id="statApproved">—</strong></span>
+        <span class="audit-stat">已忽略 <strong id="statRejected">—</strong></span>
+        <span class="audit-stat muted" id="statAutoHint"></span>
+      </div>
     </header>
 
     <section id="reviewPanel">
+      <section class="card brand-manager">
+        <h2 class="section-title">型號目錄（動態新增）</h2>
+        <div class="filters">
+          <div class="filter-row">
+            <label for="newModelCategory">分類</label>
+            <select id="newModelCategory">
+              <option value="new">新機</option>
+              <option value="used">二手</option>
+              <option value="new_ipad">iPad</option>
+              <option value="accessory">配件</option>
+            </select>
+          </div>
+          <div class="filter-row grow">
+            <label for="newModelName">基礎型號 key</label>
+            <input id="newModelName" type="text" placeholder="例如 17promax、AirPodsPro3" />
+          </div>
+          <div class="filter-row">
+            <label for="newModelMsrp">建議售價</label>
+            <input id="newModelMsrp" type="number" placeholder="必填" min="1" />
+          </div>
+          <button id="addModelBtn" type="button" class="btn-secondary">新增型號</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0;font-size:0.85rem">寫入 product_msrp，待審下拉選單會出現新型號（不含容量顏色後綴）。</p>
+      </section>
+
       <section class="card brand-manager">
         <h2 class="section-title">品牌管理（動態新增）</h2>
         <div class="filters">
@@ -36,10 +69,15 @@
           <select id="pendingDate"></select>
         </div>
         <button id="refreshPendingBtn" type="button" class="btn-primary">重新載入待審</button>
+        <button id="dedupPendingBtn" type="button" class="btn-secondary">清除本日重複待審</button>
+        <label class="auto-approve-toggle">
+          <input id="autoApproveLearned" type="checkbox" checked />
+          自動核准曾綁定過的相同內容
+        </label>
       </div>
       <div id="pendingList" class="pending-list"></div>
     </section>
   </div>
-  <script src="admin.js?v=2"></script>
+  <script src="admin.js?v=5"></script>
 </body>
 </html>
