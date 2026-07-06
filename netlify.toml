@@ -19,6 +19,11 @@
     Cache-Control = "no-cache"
 
 [[headers]]
+  for = "/admin.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-cache"

@@ -73,7 +73,17 @@ let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
 
 function table(name) {
-  return window[name] || name;
+  const value = window[name];
+  if (typeof value === "string" && value && !value.startsWith("你的")) return value;
+  const fallbacks = {
+    SUPABASE_TABLE: "iphone_prices",
+    SUPABASE_STATS_TABLE: "daily_run_stats",
+    SUPABASE_SENDER_STATS_TABLE: "sender_daily_stats",
+    SUPABASE_PENDING_TABLE: "pending_quotes",
+    SUPABASE_TICKS_TABLE: "quote_ticks",
+    SUPABASE_MSRP_TABLE: "product_msrp",
+  };
+  return fallbacks[name] || name;
 }
 
 function ensureConfig() {
@@ -297,10 +307,15 @@ function tradeSideTag(side) {
 
 function renderPriceStats(priceStats) {
   if (!priceStats?.length) return '<span class="muted">無</span>';
-  return priceStats.map((item) => {
+  const visible = priceStats.slice(0, 3);
+  const hiddenCount = priceStats.length - visible.length;
+  const chips = visible.map((item) => {
     const discount = item.discount_zhe ? ` · ${item.discount_zhe}` : "";
     return `<span class="price-chip">${formatPrice(item.price)} × ${item.count}${discount}</span>`;
   }).join("");
+  return hiddenCount > 0
+    ? `${chips}<span class="price-chip more-chip">+${hiddenCount}</span>`
+    : chips;
 }
 
 function formatShortTime(value) {
@@ -461,12 +476,10 @@ async function openDetailPanel(row) {
 
 function renderTable(rows) {
   if (!rows.length) {
-    tableBody.innerHTML = '<tr><td colspan="10" class="muted">這個分類今天沒有資料</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="9" class="muted">這個分類今天沒有資料</td></tr>';
     return;
   }
   tableBody.innerHTML = rows.map((row, index) => {
-    const source = (row.chat_name || "").trim();
-    const sourceLabel = source || "—";
     const discount = (row.top_discount_zhe || "").trim() || "—";
     return `
     <tr class="data-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看歷史走勢">
@@ -478,7 +491,6 @@ function renderTable(rows) {
       <td class="top-price" data-label="熱門價">${formatMaybePrice(row.top_price)}</td>
       <td class="discount-cell" data-label="目前折數">${discount}</td>
       <td data-label="總次數">${row.total_quotes ?? 0}</td>
-      <td class="source-cell" data-label="來源群組" title="${row.chat_id || ""}">${sourceLabel}</td>
       <td class="price-stats" data-label="價格分布">${renderPriceStats(row.price_stats)}</td>
     </tr>`;
   }).join("");
@@ -641,7 +653,7 @@ async function loadAvailableDates() {
 
 async function loadRowsForDate(selectedDate) {
   if (!selectedDate) return;
-  tableBody.innerHTML = '<tr><td colspan="10" class="muted">載入中…</td></tr>';
+  tableBody.innerHTML = '<tr><td colspan="9" class="muted">載入中…</td></tr>';
   const { data, error } = await supabaseClient
     .from(table("SUPABASE_TABLE"))
     .select("id,category,model_key,model,capacity,color,msrp,top_discount_zhe,top_price,total_quotes,price_stats,trade_side,chat_name,updated_at,device_type,condition_state,brand")
@@ -661,12 +673,12 @@ async function boot() {
     await loadAvailableDates();
     if (dateSelect.value) await loadRowsForDate(dateSelect.value);
   } catch (error) {
-    tableBody.innerHTML = `<tr><td colspan="10" class="error">${error.message}</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="9" class="error">${error.message}</td></tr>`;
   }
 }
 
 dateSelect.addEventListener("change", () => loadRowsForDate(dateSelect.value).catch((e) => {
-  tableBody.innerHTML = `<tr><td colspan="10" class="error">${e.message}</td></tr>`;
+  tableBody.innerHTML = `<tr><td colspan="9" class="error">${e.message}</td></tr>`;
 }));
 categoryTabs.addEventListener("click", (e) => {
   const btn = e.target.closest(".tab");

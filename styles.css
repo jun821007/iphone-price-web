@@ -170,29 +170,42 @@ input {
 .table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  padding: 0;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 0.95rem;
 }
 
 th,
 td {
-  padding: 12px 10px;
+  padding: 14px 12px;
   border-bottom: 1px solid var(--border);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 th {
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   color: var(--muted);
   white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover {
+  background: #f8fafc;
 }
 
 .model-name {
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .model-key {
@@ -224,18 +237,23 @@ th {
 }
 
 .price-stats {
-  min-width: 180px;
+  min-width: 220px;
 }
 
 .price-chip {
   display: inline-block;
-  margin: 0 6px 6px 0;
-  padding: 4px 8px;
+  margin: 2px 4px 2px 0;
+  padding: 4px 9px;
   border-radius: 999px;
   background: var(--chip-bg);
   color: var(--chip-text);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   white-space: nowrap;
+}
+
+.more-chip {
+  background: #f1f5f9;
+  color: var(--muted);
 }
 
 .muted {
@@ -247,9 +265,24 @@ th {
 }
 
 @media (max-width: 720px) {
+  .page {
+    padding: 8px 8px calc(18px + var(--safe-bottom));
+  }
+
+  .card {
+    border-radius: 14px;
+    padding: 10px;
+    margin-top: 10px;
+  }
+
+  .dashboard {
+    display: none;
+  }
+
   .filters {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
   }
 
   .filter-row,
@@ -267,8 +300,8 @@ th {
   }
 
   .tab {
-    padding: 14px 4px;
-    font-size: 0.9rem;
+    padding: 11px 4px;
+    font-size: 0.86rem;
   }
 
   thead {
@@ -278,19 +311,21 @@ th {
   .data-row {
     display: block;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    margin-bottom: 12px;
-    padding: 4px 12px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
     background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
   .data-row td {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 12px;
-    border-bottom: 1px dashed var(--border);
-    padding: 10px 0;
+    gap: 10px;
+    border-bottom: none;
+    padding: 5px 0;
+    font-size: 0.92rem;
   }
 
   .data-row td:last-child {
@@ -302,12 +337,16 @@ th {
     font-weight: 600;
     color: var(--muted);
     flex-shrink: 0;
-    min-width: 5em;
+    min-width: 4.5em;
+    font-size: 0.8rem;
   }
 
   .data-row td[data-label="型號"] {
     flex-direction: column;
     align-items: stretch;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
   }
 
   .data-row td[data-label="型號"]::before {
@@ -317,11 +356,38 @@ th {
   .data-row td[data-label="價格分布"] {
     flex-direction: column;
     align-items: stretch;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+    margin-top: 4px;
   }
 
   .price-stats {
     min-width: 0;
-    text-align: right;
+    text-align: left;
+  }
+
+  .price-chip {
+    font-size: 0.78rem;
+    margin-bottom: 4px;
+  }
+
+  .top-price,
+  .discount-cell {
+    font-size: 1rem;
+  }
+
+  .classify-badges {
+    margin-top: 6px;
+  }
+
+  .btn-classify {
+    align-self: flex-start;
+  }
+
+  .summary {
+    align-items: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 }
 
