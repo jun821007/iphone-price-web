@@ -54,6 +54,22 @@
       <button id="reloadBtn" type="button" class="btn-primary">重新載入</button>
     </section>
 
+    <section class="filters card market-filters">
+      <div class="filter-row">
+        <label for="marketFilter">市場總覽</label>
+        <select id="marketFilter">
+          <option value="">全部</option>
+          <option value="new">全新</option>
+          <option value="used">二手</option>
+          <option value="phone">手機</option>
+          <option value="tablet">平板</option>
+          <option value="accessory">配件</option>
+          <option value="wearable">穿戴</option>
+          <option value="computer">電腦</option>
+        </select>
+      </div>
+    </section>
+
     <nav class="tabs" id="categoryTabs" role="tablist">
       <button type="button" class="tab active" data-category="new" aria-selected="true">新機</button>
       <button type="button" class="tab" data-category="used" aria-selected="false">二手</button>
@@ -94,6 +110,17 @@
         <button type="button" id="detailClose" class="btn-secondary detail-close" aria-label="關閉">✕</button>
       </header>
       <div class="detail-stats" id="detailStats"></div>
+      <section class="detail-classify card">
+        <h3 class="detail-section-title">分類修正</h3>
+        <p id="classifyCurrent" class="classify-current muted"></p>
+        <div class="pending-bind-grid" id="classifyForm">
+          <label>設備類型<select id="classifyDevice"></select></label>
+          <label>品牌<select id="classifyBrand"></select></label>
+          <label>新舊<select id="classifyCondition"></select></label>
+        </div>
+        <button type="button" id="classifySave" class="btn-primary classify-save">儲存分類</button>
+        <p id="classifyStatus" class="classify-status muted" aria-live="polite"></p>
+      </section>
       <div class="detail-chart-wrap">
         <canvas id="priceChart" aria-label="歷史價格走勢"></canvas>
       </div>
@@ -108,7 +135,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=11"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});

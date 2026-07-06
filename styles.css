@@ -143,6 +143,16 @@ input {
   font-size: 0.95rem;
 }
 
+.summary-badge.market-badge {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.filters.market-filters {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
 .summary-badge {
   flex-shrink: 0;
   background: var(--accent);
@@ -596,6 +606,68 @@ th {
   .detail-tick-row {
     grid-template-columns: 1fr 1fr;
   }
+}
+
+.detail-classify {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.classify-current {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+}
+
+.classify-save {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.classify-status {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+}
+
+.classify-status.ok {
+  color: #047857;
+}
+
+.classify-status.error {
+  color: var(--error);
+}
+
+.classify-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.classify-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.btn-classify {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--accent-dark);
+  cursor: pointer;
+}
+
+.btn-classify:hover {
+  background: var(--chip-bg);
 }
 
 .brand-list {

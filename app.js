@@ -1,8 +1,40 @@
 const CATEGORY_LABELS = { new: "新機", new_ipad: "iPad", accessory: "配件", used: "二手" };
+const MARKET_LABELS = {
+  "": "全部",
+  new: "全新",
+  used: "二手",
+  phone: "手機",
+  tablet: "平板",
+  accessory: "配件",
+  wearable: "穿戴",
+  computer: "電腦",
+};
 const TIMEZONE = "Asia/Taipei";
+
+const CONDITION_OPTIONS = [
+  { value: "new", label: "全新" },
+  { value: "used", label: "二手" },
+  { value: "refurbished", label: "整新" },
+  { value: "unknown", label: "未知" },
+];
+
+const FALLBACK_DEVICE_TYPES = [
+  { code: "phone", label: "手機" },
+  { code: "tablet", label: "平板" },
+  { code: "accessory", label: "配件" },
+  { code: "wearable", label: "穿戴" },
+  { code: "computer", label: "電腦" },
+];
+
+const FALLBACK_BRANDS = [
+  { code: "apple", name: "Apple" },
+  { code: "samsung", name: "Samsung" },
+  { code: "other", name: "其他" },
+];
 
 const dateSelect = document.getElementById("dateSelect");
 const searchInput = document.getElementById("searchInput");
+const marketFilter = document.getElementById("marketFilter");
 const reloadBtn = document.getElementById("reloadBtn");
 const tableBody = document.getElementById("tableBody");
 const summary = document.getElementById("summary");
@@ -22,13 +54,23 @@ const detailTicks = document.getElementById("detailTicks");
 const detailClose = document.getElementById("detailClose");
 const priceChartCanvas = document.getElementById("priceChart");
 const discountChartCanvas = document.getElementById("discountChart");
+const classifyCurrent = document.getElementById("classifyCurrent");
+const classifyDevice = document.getElementById("classifyDevice");
+const classifyBrand = document.getElementById("classifyBrand");
+const classifyCondition = document.getElementById("classifyCondition");
+const classifySave = document.getElementById("classifySave");
+const classifyStatus = document.getElementById("classifyStatus");
 
 let supabaseClient = null;
 let allRows = [];
 let activeCategory = "new";
+let activeMarketFilter = "";
 let latestSyncTime = null;
 let priceChart = null;
 let discountChart = null;
+let currentDetailRow = null;
+let deviceTypes = [...FALLBACK_DEVICE_TYPES];
+let brands = [...FALLBACK_BRANDS];
 
 function table(name) {
   return window[name] || name;
@@ -70,6 +112,182 @@ function formatUpdatedAt(date) {
     year: "numeric", month: "numeric", day: "numeric",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
+}
+
+function inferCondition(row) {
+  if (row.condition_state) return row.condition_state;
+  if (row.category === "used") return "used";
+  return "new";
+}
+
+function inferDeviceType(row) {
+  if (row.device_type) return row.device_type;
+  if (row.category === "new_ipad") return "tablet";
+  if (row.category === "accessory") return "accessory";
+  if (row.category === "used") {
+    const key = String(row.model_key || row.model || "").toLowerCase();
+    if (key.includes("ipad")) return "tablet";
+    if (key.includes("airpods") || key.includes("watch")) return "wearable";
+    if (key.includes("mac")) return "computer";
+  }
+  return "phone";
+}
+
+function rowMatchesMarketFilter(row) {
+  const filter = activeMarketFilter;
+  if (!filter) return true;
+  if (filter === "new" || filter === "used") return inferCondition(row) === filter;
+  return inferDeviceType(row) === filter;
+}
+
+function sortRowsForView(rows) {
+  if (!activeMarketFilter) return rows;
+  return [...rows].sort((a, b) => {
+    const pa = a.top_price ?? Number.POSITIVE_INFINITY;
+    const pb = b.top_price ?? Number.POSITIVE_INFINITY;
+    if (pa !== pb) return pa - pb;
+    return (b.total_quotes || 0) - (a.total_quotes || 0);
+  });
+}
+
+function deviceTypeLabel(code) {
+  return deviceTypes.find((d) => d.code === code)?.label || code || "—";
+}
+
+function brandLabel(code) {
+  return brands.find((b) => b.code === code)?.name || code || "—";
+}
+
+function conditionLabel(code) {
+  return CONDITION_OPTIONS.find((c) => c.value === code)?.label || code || "—";
+}
+
+function fillSelect(el, options, selected) {
+  if (!el) return;
+  el.innerHTML = options.map((opt) => {
+    const value = typeof opt === "string" ? opt : opt.value;
+    const label = typeof opt === "string" ? opt : opt.label;
+    const sel = value === selected ? " selected" : "";
+    return `<option value="${value}"${sel}>${label}</option>`;
+  }).join("");
+}
+
+async function loadTaxonomy() {
+  const [{ data: dt, error: dtErr }, { data: br, error: brErr }] = await Promise.all([
+    supabaseClient.from("device_types").select("code,label,sort_order").order("sort_order"),
+    supabaseClient.from("brands").select("code,name,is_active").eq("is_active", true).order("name"),
+  ]);
+  if (!dtErr && dt?.length) deviceTypes = dt;
+  if (!brErr && br?.length) brands = br;
+}
+
+function renderClassificationBadges(row) {
+  const device = deviceTypeLabel(inferDeviceType(row));
+  const brand = brandLabel(row.brand || "apple");
+  const condition = conditionLabel(inferCondition(row));
+  return `<div class="classify-badges">
+    <span class="classify-badge">${device}</span>
+    <span class="classify-badge">${brand}</span>
+    <span class="classify-badge">${condition}</span>
+  </div>`;
+}
+
+function populateClassifyForm(row) {
+  const device = inferDeviceType(row);
+  const brand = row.brand || "apple";
+  const condition = inferCondition(row);
+  fillSelect(
+    classifyDevice,
+    deviceTypes.map((d) => ({ value: d.code, label: d.label })),
+    device,
+  );
+  fillSelect(
+    classifyBrand,
+    brands.map((b) => ({ value: b.code, label: b.name })),
+    brand,
+  );
+  fillSelect(classifyCondition, CONDITION_OPTIONS, condition);
+  if (classifyCurrent) {
+    classifyCurrent.textContent = `目前：${deviceTypeLabel(device)} · ${brandLabel(brand)} · ${conditionLabel(condition)}`;
+  }
+  if (classifyStatus) {
+    classifyStatus.textContent = "";
+    classifyStatus.className = "classify-status muted";
+  }
+}
+
+function setClassifyStatus(message, kind = "") {
+  if (!classifyStatus) return;
+  classifyStatus.textContent = message;
+  classifyStatus.className = `classify-status${kind ? ` ${kind}` : ""}`;
+}
+
+async function saveClassification(row) {
+  if (!row) return;
+  const quoteDate = dateSelect.value;
+  if (!quoteDate) {
+    setClassifyStatus("請先選擇日期", "error");
+    return;
+  }
+  const deviceType = classifyDevice?.value || inferDeviceType(row);
+  const brand = classifyBrand?.value || row.brand || "apple";
+  const condition = classifyCondition?.value || inferCondition(row);
+  const tradeSide = row.trade_side || "sell";
+  const now = new Date().toISOString();
+  const pricesTable = table("SUPABASE_TABLE");
+  const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
+
+  setClassifyStatus("儲存中…");
+
+  const { error: priceError } = await supabaseClient
+    .from(pricesTable)
+    .update({
+      device_type: deviceType,
+      brand,
+      condition_state: condition,
+      updated_at: now,
+    })
+    .eq("quote_date", quoteDate)
+    .eq("category", row.category)
+    .eq("model_key", row.model_key)
+    .eq("trade_side", tradeSide);
+  if (priceError) throw priceError;
+
+  if (row.id) {
+    const { error: overrideError } = await supabaseClient.from("classification_overrides").upsert({
+      target_table: "iphone_prices",
+      target_id: row.id,
+      device_type_code: deviceType,
+      brand_code: brand,
+      condition_state: condition,
+      model_display: row.model || row.model_key,
+      capacity: row.capacity || "",
+      color: row.color || "",
+      corrected_by: "main_board",
+    }, { onConflict: "target_table,target_id" });
+    if (overrideError) throw overrideError;
+  }
+
+  const { error: tickError } = await supabaseClient
+    .from(ticksTable)
+    .update({
+      device_type: deviceType,
+      brand,
+      condition_state: condition,
+    })
+    .eq("quote_date", quoteDate)
+    .eq("category", row.category)
+    .eq("model_key", row.model_key)
+    .eq("trade_side", tradeSide);
+  if (tickError) throw tickError;
+
+  row.device_type = deviceType;
+  row.brand = brand;
+  row.condition_state = condition;
+  currentDetailRow = row;
+  populateClassifyForm(row);
+  setClassifyStatus("已儲存分類（含當日 quote_ticks）", "ok");
+  applyFilters();
 }
 
 function tradeSideTag(side) {
@@ -176,6 +394,8 @@ function aggregateDaily(ticks) {
 
 async function openDetailPanel(row) {
   if (!detailModal) return;
+  currentDetailRow = row;
+  populateClassifyForm(row);
   const label = [row.model || row.model_key, row.capacity, row.color].filter(Boolean).join(" ");
   detailTitle.textContent = label || row.model_key;
   detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${row.trade_side === "buy" ? "買單" : "賣單"} · ${row.model_key}`;
@@ -251,7 +471,7 @@ function renderTable(rows) {
     return `
     <tr class="data-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看歷史走勢">
       <td data-label="方向">${tradeSideTag(row.trade_side || "sell")}</td>
-      <td data-label="型號"><div class="model-name">${row.model || row.model_key}</div><div class="model-key">${row.model_key || ""}</div></td>
+      <td data-label="型號"><div class="model-name">${row.model || row.model_key}</div><div class="model-key">${row.model_key || ""}</div>${renderClassificationBadges(row)}<button type="button" class="btn-classify" data-row-index="${index}">修正分類</button></td>
       <td data-label="容量">${row.capacity || "—"}</td>
       <td data-label="顏色">${row.color || "—"}</td>
       <td data-label="建議售價">${formatMaybePrice(row.msrp)}</td>
@@ -295,7 +515,11 @@ async function fetchLatestSyncTime(selectedDate) {
 
 function renderSummary(rows, selectedDate) {
   const label = CATEGORY_LABELS[activeCategory] || activeCategory;
-  summary.innerHTML = `<div class="summary-badge">${label}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個商品規格</div>`;
+  const marketLabel = MARKET_LABELS[activeMarketFilter];
+  const marketBadge = activeMarketFilter
+    ? `<div class="summary-badge market-badge">${marketLabel} · 依熱門價由低到高</div>`
+    : "";
+  summary.innerHTML = `${marketBadge}<div class="summary-badge">${label}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個商品規格</div>`;
 }
 
 function formatSenderDisplay(row) {
@@ -380,12 +604,13 @@ function buildModelRows(prices) {
 function applyFilters() {
   const keyword = searchInput.value.trim().toLowerCase();
   const selectedDate = dateSelect.value;
-  const filtered = allRows.filter((row) => {
+  const filtered = sortRowsForView(allRows.filter((row) => {
     if (row.category !== activeCategory) return false;
+    if (!rowMatchesMarketFilter(row)) return false;
     if (!keyword) return true;
     const haystack = [row.model, row.model_key, row.capacity, row.color, row.chat_name].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(keyword);
-  });
+  }));
   window.filteredRows = filtered;
   renderTable(filtered);
   renderSummary(filtered, selectedDate);
@@ -419,7 +644,7 @@ async function loadRowsForDate(selectedDate) {
   tableBody.innerHTML = '<tr><td colspan="10" class="muted">載入中…</td></tr>';
   const { data, error } = await supabaseClient
     .from(table("SUPABASE_TABLE"))
-    .select("category,model_key,model,capacity,color,msrp,top_discount_zhe,top_price,total_quotes,price_stats,trade_side,chat_name,updated_at")
+    .select("id,category,model_key,model,capacity,color,msrp,top_discount_zhe,top_price,total_quotes,price_stats,trade_side,chat_name,updated_at,device_type,condition_state,brand")
     .eq("quote_date", selectedDate)
     .order("category").order("model_key");
   if (error) throw error;
@@ -432,6 +657,7 @@ async function loadRowsForDate(selectedDate) {
 async function boot() {
   try {
     initClient();
+    await loadTaxonomy();
     await loadAvailableDates();
     if (dateSelect.value) await loadRowsForDate(dateSelect.value);
   } catch (error) {
@@ -447,9 +673,27 @@ categoryTabs.addEventListener("click", (e) => {
   if (btn) setActiveCategory(btn.dataset.category);
 });
 searchInput.addEventListener("input", applyFilters);
+if (marketFilter) {
+  marketFilter.addEventListener("change", () => {
+    activeMarketFilter = marketFilter.value;
+    applyFilters();
+  });
+}
 reloadBtn.addEventListener("click", () => boot());
 
 tableBody.addEventListener("click", (event) => {
+  if (event.target.classList.contains("btn-classify")) {
+    event.stopPropagation();
+    const index = Number(event.target.dataset.rowIndex);
+    const row = window.filteredRows?.[index];
+    if (row) {
+      openDetailPanel(row).catch((e) => {
+        setClassifyStatus(e.message, "error");
+      });
+      classifyDevice?.focus();
+    }
+    return;
+  }
   const rowEl = event.target.closest(".data-row");
   if (!rowEl) return;
   const index = Number(rowEl.dataset.rowIndex);
@@ -470,6 +714,7 @@ tableBody.addEventListener("keydown", (event) => {
 if (detailClose) {
   detailClose.addEventListener("click", () => {
     destroyCharts();
+    currentDetailRow = null;
     detailModal.close();
   });
 }
@@ -477,8 +722,14 @@ if (detailModal) {
   detailModal.addEventListener("click", (event) => {
     if (event.target === detailModal) {
       destroyCharts();
+      currentDetailRow = null;
       detailModal.close();
     }
+  });
+}
+if (classifySave) {
+  classifySave.addEventListener("click", () => {
+    saveClassification(currentDetailRow).catch((e) => setClassifyStatus(e.message, "error"));
   });
 }
 
