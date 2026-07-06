@@ -1,6 +1,9 @@
 const pendingDate = document.getElementById("pendingDate");
 const refreshPendingBtn = document.getElementById("refreshPendingBtn");
 const pendingList = document.getElementById("pendingList");
+const newBrandName = document.getElementById("newBrandName");
+const addBrandBtn = document.getElementById("addBrandBtn");
+const brandList = document.getElementById("brandList");
 
 const CATEGORY_OPTIONS = [
   { value: "new", label: "新機" },
@@ -9,14 +12,38 @@ const CATEGORY_OPTIONS = [
   { value: "accessory", label: "配件" },
 ];
 
+const CONDITION_OPTIONS = [
+  { value: "new", label: "全新" },
+  { value: "used", label: "二手" },
+  { value: "refurbished", label: "整新" },
+  { value: "unknown", label: "未知" },
+];
+
 const CAPACITY_OPTIONS = ["", "64", "128", "256", "512", "1T", "2T"];
 const COLOR_OPTIONS = ["", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "星光", "午夜"];
 
 const COLOR_RE = /(黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|星光|午夜)$/;
 
+const FALLBACK_DEVICE_TYPES = [
+  { code: "phone", label: "手機" },
+  { code: "tablet", label: "平板" },
+  { code: "accessory", label: "配件" },
+  { code: "wearable", label: "穿戴" },
+  { code: "computer", label: "電腦" },
+];
+
+const FALLBACK_BRANDS = [
+  { code: "apple", name: "Apple" },
+  { code: "samsung", name: "Samsung" },
+  { code: "other", name: "其他" },
+];
+
 let supabaseClient = null;
 let modelOptions = [];
 let catalogByCategory = {};
+let deviceTypes = [...FALLBACK_DEVICE_TYPES];
+let brands = [...FALLBACK_BRANDS];
+let pendingRowsById = {};
 
 function table(name) {
   return window[name] || name;
@@ -37,6 +64,29 @@ function splitModelKey(modelKey) {
   return { model, capacity, color };
 }
 
+function normalizeKey(text) {
+  return String(text || "").toLowerCase().replace(/[\s\-_/]/g, "");
+}
+
+function classifySpec(category, modelKey) {
+  const key = normalizeKey(modelKey);
+  const cat = (category || "").toLowerCase();
+  let deviceType = "phone";
+  if (key.startsWith("s11") || key.startsWith("se") || key.includes("watch")) deviceType = "wearable";
+  else if (key.startsWith("macbook") || key.includes("mac")) deviceType = "computer";
+  else if (cat === "new_ipad" || key.startsWith("ipad")) deviceType = "tablet";
+  else if (key.includes("airpods") || key.includes("applepencil") || cat === "accessory") deviceType = "accessory";
+  const condition = cat === "used" ? "used" : "new";
+  return { deviceType, brand: "apple", condition };
+}
+
+function suggestCategory(deviceType, condition) {
+  if (condition === "used") return "used";
+  if (deviceType === "tablet") return "new_ipad";
+  if (deviceType === "accessory" || deviceType === "wearable") return "accessory";
+  return "new";
+}
+
 function buildCatalogIndex(rows) {
   catalogByCategory = {};
   for (const row of rows) {
@@ -47,6 +97,22 @@ function buildCatalogIndex(rows) {
     catalogByCategory[category].rows.push(row);
     catalogByCategory[category].baseModels.add(splitModelKey(row.model_key).model);
   }
+}
+
+async function loadTaxonomy() {
+  const [{ data: dt, error: dtErr }, { data: br, error: brErr }] = await Promise.all([
+    supabaseClient.from("device_types").select("code,label,sort_order").order("sort_order"),
+    supabaseClient.from("brands").select("code,name,is_active").eq("is_active", true).order("name"),
+  ]);
+  if (!dtErr && dt?.length) deviceTypes = dt;
+  if (!brErr && br?.length) brands = br;
+  renderBrandList();
+}
+
+function renderBrandList() {
+  if (!brandList) return;
+  brandList.innerHTML = brands.map((b) => `<span class="price-chip">${b.name} <code>${b.code}</code></span>`).join("")
+    || '<span class="muted">尚無品牌</span>';
 }
 
 async function loadModelOptions() {
@@ -75,6 +141,20 @@ function buildSelect(className, options, selected = "") {
   }).join("")}</select>`;
 }
 
+function deviceTypeSelect(selected = "phone") {
+  const options = deviceTypes.map((d) => ({ value: d.code, label: d.label }));
+  return buildSelect("bind-device-type", options, selected);
+}
+
+function brandSelect(selected = "apple") {
+  const options = brands.map((b) => ({ value: b.code, label: b.name }));
+  return buildSelect("bind-brand", options, selected);
+}
+
+function conditionSelect(selected = "new") {
+  return buildSelect("bind-condition", CONDITION_OPTIONS, selected);
+}
+
 function categorySelect(selected = "new") {
   return buildSelect("bind-category", CATEGORY_OPTIONS.map((o) => ({ value: o.value, label: o.label })), selected);
 }
@@ -99,7 +179,7 @@ function guessCategory(rawLine) {
   const line = (rawLine || "").toLowerCase();
   if (/二手|中古|整新/.test(line)) return "used";
   if (/ipad/.test(line)) return "new_ipad";
-  if (/airpods|pencil|配件|保護貼|充電|原廠/.test(line)) return "accessory";
+  if (/airpods|pencil|配件|保護貼|充電|原廠|watch|s11\b|se\d/.test(line)) return "accessory";
   return "new";
 }
 
@@ -109,16 +189,31 @@ function guessBinding(rawLine) {
     const keyCompact = row.model_key.toLowerCase().replace(/\s/g, "");
     if (compact.includes(keyCompact)) {
       const parts = splitModelKey(row.model_key);
+      const category = row.category;
+      const composed = row.model_key;
+      const cls = classifySpec(category, composed);
       return {
-        category: row.category,
+        category,
         baseModel: parts.model,
         capacity: row.capacity || parts.capacity,
         color: row.color || parts.color,
+        deviceType: cls.deviceType,
+        brand: cls.brand,
+        condition: cls.condition,
       };
     }
   }
   const category = guessCategory(rawLine);
-  return { category, baseModel: "", capacity: "", color: "" };
+  const cls = classifySpec(category, compact);
+  return {
+    category,
+    baseModel: "",
+    capacity: "",
+    color: "",
+    deviceType: cls.deviceType,
+    brand: cls.brand,
+    condition: cls.condition,
+  };
 }
 
 function resolveModelBinding(category, baseModel, capacity, color) {
@@ -167,12 +262,14 @@ function formatSenderLabel(row) {
 }
 
 function renderPending(rows) {
+  pendingRowsById = {};
   if (!rows.length) {
     pendingList.innerHTML = '<div class="card muted">今天沒有待審核訊息</div>';
     return;
   }
 
   pendingList.innerHTML = rows.map((row) => {
+    pendingRowsById[row.id] = row;
     const side = row.trade_side === "buy" ? "買單" : "賣單";
     const { who, group } = formatSenderLabel(row);
     const guess = guessBinding(row.raw_line || "");
@@ -183,25 +280,36 @@ function renderPending(rows) {
       <pre class="pending-text">${row.raw_line}</pre>
       <div class="pending-price">偵測價格：${row.detected_price ?? "—"}</div>
       <div class="pending-actions">
+        <p class="muted" style="margin:0 0 8px;font-size:0.85rem">階層分類（任務三/四）</p>
         <div class="pending-bind-grid">
-          <label>分類${categorySelect(guess.category)}</label>
+          <label>設備${deviceTypeSelect(guess.deviceType)}</label>
+          <label>品牌${brandSelect(guess.brand)}</label>
+          <label>新舊${conditionSelect(guess.condition)}</label>
+          <label>pipeline 分類${categorySelect(guess.category)}</label>
           <label>型號${baseModelSelect(guess.category, guess.baseModel)}</label>
           <label>${capacitySelect(guess.capacity)}</label>
           <label>${colorSelect(guess.color)}</label>
           <label>價格<input class="bind-price" type="number" placeholder="綁定價格" value="${row.detected_price || ""}" /></label>
         </div>
-        <button type="button" class="btn-primary approve-btn">核准綁定</button>
+        <button type="button" class="btn-primary approve-btn">核准綁定並建檔</button>
         <button type="button" class="btn-secondary reject-btn">忽略</button>
       </div>
     </article>`;
   }).join("");
 }
 
-function refreshBaseModelSelect(card) {
-  const category = card.querySelector(".bind-category").value;
-  const current = card.querySelector(".bind-base-model").value;
-  const label = card.querySelector(".bind-base-model").closest("label");
-  if (label) label.innerHTML = `型號${baseModelSelect(category, current)}`;
+function refreshCascade(card, changed) {
+  const deviceType = card.querySelector(".bind-device-type").value;
+  const condition = card.querySelector(".bind-condition").value;
+  const categoryEl = card.querySelector(".bind-category");
+  if (changed === "device" || changed === "condition") {
+    const suggested = suggestCategory(deviceType, condition);
+    categoryEl.value = suggested;
+  }
+  const category = categoryEl.value;
+  const current = card.querySelector(".bind-base-model")?.value || "";
+  const modelLabel = card.querySelector(".bind-base-model")?.closest("label");
+  if (modelLabel) modelLabel.innerHTML = `型號${baseModelSelect(category, current)}`;
 }
 
 async function loadPendingDates() {
@@ -233,7 +341,51 @@ async function loadPending() {
   renderPending(data || []);
 }
 
+async function saveClassificationOverride(rowId, deviceType, brand, condition, binding) {
+  await supabaseClient.from("classification_overrides").upsert({
+    target_table: "pending_quotes",
+    target_id: rowId,
+    device_type_code: deviceType,
+    brand_code: brand,
+    condition_state: condition,
+    model_display: binding.model,
+    capacity: binding.capacity,
+    color: binding.color,
+    corrected_by: "admin",
+  }, { onConflict: "target_table,target_id" });
+}
+
+async function insertQuoteTick(pendingRow, binding, bindPrice, tradeSide, deviceType, brand, condition, date, now) {
+  const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
+  const discountZhe = formatDiscountZhe(bindPrice, binding.msrp);
+  await supabaseClient.from(ticksTable).upsert({
+    quoted_at: now,
+    quote_date: date,
+    category: binding.category,
+    model_key: binding.model_key,
+    model: binding.model,
+    capacity: binding.capacity,
+    color: binding.color,
+    price: bindPrice,
+    trade_side: tradeSide,
+    msrp: binding.msrp,
+    discount_zhe: discountZhe,
+    device_type: deviceType,
+    brand,
+    condition_state: condition,
+    chat_id: pendingRow.chat_id || "",
+    chat_name: pendingRow.chat_name || "",
+    from_mid: pendingRow.from_mid || "",
+    sender_name: pendingRow.sender_name || "",
+    message_id: pendingRow.message_id,
+  }, { onConflict: "message_id,category,model_key,price,trade_side" });
+}
+
 async function approvePending(card, rowId) {
+  const pendingRow = pendingRowsById[rowId];
+  const deviceType = card.querySelector(".bind-device-type").value;
+  const brand = card.querySelector(".bind-brand").value;
+  const condition = card.querySelector(".bind-condition").value;
   const category = card.querySelector(".bind-category").value;
   const baseModel = card.querySelector(".bind-base-model").value;
   const capacity = card.querySelector(".bind-capacity").value;
@@ -291,8 +443,18 @@ async function approvePending(card, rowId) {
     msrp: binding.msrp,
     top_discount_zhe: formatDiscountZhe(topPrice, binding.msrp),
     total_quotes: totalQuotes,
+    device_type: deviceType,
+    brand,
+    condition_state: condition,
+    chat_id: pendingRow?.chat_id || "",
+    chat_name: pendingRow?.chat_name || "",
     updated_at: now,
   }, { onConflict: "quote_date,category,model_key,trade_side" });
+
+  if (pendingRow) {
+    await insertQuoteTick(pendingRow, binding, bindPrice, tradeSide, deviceType, brand, condition, date, now);
+  }
+  await saveClassificationOverride(rowId, deviceType, brand, condition, binding);
 
   await supabaseClient.from(table("SUPABASE_PENDING_TABLE")).update({
     status: "approved",
@@ -315,9 +477,32 @@ async function rejectPending(rowId) {
   await loadPending();
 }
 
+async function addBrand() {
+  const name = (newBrandName?.value || "").trim();
+  if (!name) {
+    alert("請輸入品牌名稱");
+    return;
+  }
+  const code = normalizeKey(name).replace(/[^a-z0-9]/g, "") || `brand_${Date.now()}`;
+  const { error } = await supabaseClient.from("brands").upsert({
+    code,
+    name,
+    is_active: true,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "code" });
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  newBrandName.value = "";
+  await loadTaxonomy();
+  await loadPending();
+}
+
 async function initAdmin() {
   try {
     initClient();
+    await loadTaxonomy();
     await loadModelOptions();
     await loadPendingDates();
     await loadPending();
@@ -328,24 +513,26 @@ async function initAdmin() {
 
 initAdmin();
 
-refreshPendingBtn.addEventListener("click", () => loadPending().catch((e) => alert(e.message)));
+refreshPendingBtn?.addEventListener("click", () => loadPending().catch((e) => alert(e.message)));
+addBrandBtn?.addEventListener("click", () => addBrand().catch((e) => alert(e.message)));
 
 pendingList.addEventListener("change", (event) => {
-  if (event.target.classList.contains("bind-category")) {
-    const card = event.target.closest(".pending-card");
-    if (card) refreshBaseModelSelect(card);
-  }
+  const card = event.target.closest(".pending-card");
+  if (!card) return;
+  if (event.target.classList.contains("bind-device-type")) refreshCascade(card, "device");
+  if (event.target.classList.contains("bind-condition")) refreshCascade(card, "condition");
+  if (event.target.classList.contains("bind-category")) refreshCascade(card, "category");
 });
 
 pendingList.addEventListener("click", async (event) => {
   const card = event.target.closest(".pending-card");
   if (!card) return;
   const rowId = Number(card.dataset.id);
-  if (event.target.classList.contains("approve-btn")) {
-    await approvePending(card, rowId);
-  }
-  if (event.target.classList.contains("reject-btn")) {
-    await rejectPending(rowId);
+  try {
+    if (event.target.classList.contains("approve-btn")) await approvePending(card, rowId);
+    if (event.target.classList.contains("reject-btn")) await rejectPending(rowId);
+  } catch (error) {
+    alert(error.message);
   }
 });
 

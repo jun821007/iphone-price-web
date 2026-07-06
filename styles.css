@@ -597,3 +597,19 @@ th {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.brand-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.brand-list code {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.brand-manager {
+  margin-top: 12px;
+}

@@ -18,6 +18,18 @@
     </header>
 
     <section id="reviewPanel">
+      <section class="card brand-manager">
+        <h2 class="section-title">品牌管理（動態新增）</h2>
+        <div class="filters">
+          <div class="filter-row grow">
+            <label for="newBrandName">新品牌名稱</label>
+            <input id="newBrandName" type="text" placeholder="例如 Huawei、小米" />
+          </div>
+          <button id="addBrandBtn" type="button" class="btn-secondary">新增品牌</button>
+        </div>
+        <div id="brandList" class="brand-list muted">載入中…</div>
+      </section>
+
       <div class="filters card">
         <div class="filter-row">
           <label for="pendingDate">日期</label>
@@ -28,6 +40,6 @@
       <div id="pendingList" class="pending-list"></div>
     </section>
   </div>
-  <script src="admin.js"></script>
+  <script src="admin.js?v=2"></script>
 </body>
 </html>
