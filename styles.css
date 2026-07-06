@@ -685,3 +685,21 @@ th {
 .brand-manager {
   margin-top: 12px;
 }
+
+.dual-color-box {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  font-size: 0.9rem;
+}
+
+.dual-color-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
