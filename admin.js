@@ -145,7 +145,17 @@ async function updateAuditStats(date) {
 }
 
 function table(name) {
-  return window[name] || name;
+  const value = window[name];
+  if (typeof value === "string" && value && !value.startsWith("你的")) return value;
+  const fallbacks = {
+    SUPABASE_TABLE: "iphone_prices",
+    SUPABASE_STATS_TABLE: "daily_run_stats",
+    SUPABASE_SENDER_STATS_TABLE: "sender_daily_stats",
+    SUPABASE_PENDING_TABLE: "pending_quotes",
+    SUPABASE_TICKS_TABLE: "quote_ticks",
+    SUPABASE_MSRP_TABLE: "product_msrp",
+  };
+  return fallbacks[name] || name;
 }
 
 function initClient() {
@@ -262,7 +272,7 @@ function renderBrandList() {
 }
 
 async function loadModelOptions() {
-  const msrpTable = table("SUPABASE_MSRP_TABLE") || "product_msrp";
+  const msrpTable = table("SUPABASE_MSRP_TABLE");
   const [{ data, error }, { data: msrpRows, error: msrpError }] = await Promise.all([
     supabaseClient
       .from(table("SUPABASE_TABLE"))
@@ -860,7 +870,7 @@ async function addBaseModel() {
     alert("請填建議售價（正整數）");
     return;
   }
-  const msrpTable = table("SUPABASE_MSRP_TABLE") || "product_msrp";
+  const msrpTable = table("SUPABASE_MSRP_TABLE");
   const effectiveFrom = new Date().toISOString().slice(0, 10);
   const { error } = await supabaseClient.from(msrpTable).upsert({
     model_key: baseModel,
