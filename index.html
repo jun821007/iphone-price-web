@@ -83,7 +83,32 @@
       </table>
     </section>
   </div>
-  <script src="app.js?v=7"></script>
+
+  <dialog id="detailModal" class="detail-modal">
+    <div class="detail-panel">
+      <header class="detail-header">
+        <div>
+          <h2 id="detailTitle" class="detail-title">—</h2>
+          <p id="detailSubtitle" class="detail-subtitle muted"></p>
+        </div>
+        <button type="button" id="detailClose" class="btn-secondary detail-close" aria-label="關閉">✕</button>
+      </header>
+      <div class="detail-stats" id="detailStats"></div>
+      <div class="detail-chart-wrap">
+        <canvas id="priceChart" aria-label="歷史價格走勢"></canvas>
+      </div>
+      <div class="detail-chart-wrap">
+        <canvas id="discountChart" aria-label="歷史折數走勢"></canvas>
+      </div>
+      <div class="detail-ticks-wrap">
+        <h3 class="detail-section-title">最近報價紀錄</h3>
+        <div id="detailTicks" class="detail-ticks muted">載入中…</div>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="app.js?v=8"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});

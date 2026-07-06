@@ -14,11 +14,21 @@ const statRecords = document.getElementById("statRecords");
 const statQuotes = document.getElementById("statQuotes");
 const senderLeaderboard = document.getElementById("senderLeaderboard");
 const modelLeaderboard = document.getElementById("modelLeaderboard");
+const detailModal = document.getElementById("detailModal");
+const detailTitle = document.getElementById("detailTitle");
+const detailSubtitle = document.getElementById("detailSubtitle");
+const detailStats = document.getElementById("detailStats");
+const detailTicks = document.getElementById("detailTicks");
+const detailClose = document.getElementById("detailClose");
+const priceChartCanvas = document.getElementById("priceChart");
+const discountChartCanvas = document.getElementById("discountChart");
 
 let supabaseClient = null;
 let allRows = [];
 let activeCategory = "new";
 let latestSyncTime = null;
+let priceChart = null;
+let discountChart = null;
 
 function table(name) {
   return window[name] || name;
@@ -75,17 +85,129 @@ function renderPriceStats(priceStats) {
   }).join("");
 }
 
+function formatShortTime(value) {
+  const date = parseTimestamp(value);
+  if (!date) return "—";
+  return date.toLocaleString("zh-TW", {
+    hour12: false,
+    timeZone: TIMEZONE,
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function parseDiscountNumber(text) {
+  const match = String(text || "").match(/([\d.]+)/);
+  return match ? Number(match[1]) : null;
+}
+
+function destroyCharts() {
+  if (priceChart) {
+    priceChart.destroy();
+    priceChart = null;
+  }
+  if (discountChart) {
+    discountChart.destroy();
+    discountChart = null;
+  }
+}
+
+function buildChart(ctx, label, labels, data, color, yTickFormatter) {
+  return new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: `${color}22`,
+        tension: 0.2,
+        pointRadius: 2,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          ticks: {
+            callback: (value) => (yTickFormatter ? yTickFormatter(value) : value),
+          },
+        },
+      },
+    },
+  });
+}
+
+async function openDetailPanel(row) {
+  if (!detailModal) return;
+  const label = [row.model || row.model_key, row.capacity, row.color].filter(Boolean).join(" ");
+  detailTitle.textContent = label || row.model_key;
+  detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${row.trade_side === "buy" ? "買單" : "賣單"} · ${row.model_key}`;
+  detailStats.innerHTML = `
+    <div class="detail-stat"><span class="muted">建議售價</span><strong>${formatMaybePrice(row.msrp)}</strong></div>
+    <div class="detail-stat"><span class="muted">今日熱門價</span><strong>${formatMaybePrice(row.top_price)}</strong></div>
+    <div class="detail-stat"><span class="muted">目前折數</span><strong>${(row.top_discount_zhe || "—")}</strong></div>
+  `;
+  detailTicks.textContent = "載入中…";
+  destroyCharts();
+  detailModal.showModal();
+
+  const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
+  const { data, error } = await supabaseClient
+    .from(ticksTable)
+    .select("quoted_at,price,discount_zhe,chat_name,sender_name")
+    .eq("category", row.category)
+    .eq("model_key", row.model_key)
+    .eq("trade_side", row.trade_side || "sell")
+    .order("quoted_at", { ascending: true })
+    .limit(800);
+
+  if (error) {
+    detailTicks.innerHTML = `<span class="error">${error.message}</span>`;
+    return;
+  }
+
+  const ticks = data || [];
+  if (!ticks.length) {
+    detailTicks.textContent = "尚無歷史逐筆資料（需 v6 quote_ticks）";
+    return;
+  }
+
+  const labels = ticks.map((t) => formatShortTime(t.quoted_at));
+  const prices = ticks.map((t) => t.price);
+  const discounts = ticks.map((t) => parseDiscountNumber(t.discount_zhe));
+
+  priceChart = buildChart(priceChartCanvas, "價格", labels, prices, "#2563eb", (v) => formatPrice(v));
+  if (discounts.some((v) => v != null)) {
+    discountChart = buildChart(discountChartCanvas, "折數", labels, discounts, "#047857", (v) => `${v}折`);
+  }
+
+  const recent = [...ticks].reverse().slice(0, 15);
+  detailTicks.innerHTML = recent.map((t) => {
+    const who = (t.sender_name || "").trim() || "—";
+    const group = (t.chat_name || "").trim();
+    const meta = group ? ` · ${group}` : "";
+    return `<div class="detail-tick-row"><span>${formatShortTime(t.quoted_at)}</span><strong>${formatPrice(t.price)}</strong><span>${t.discount_zhe || "—"}</span><span class="muted">${who}${meta}</span></div>`;
+  }).join("");
+}
+
 function renderTable(rows) {
   if (!rows.length) {
     tableBody.innerHTML = '<tr><td colspan="10" class="muted">這個分類今天沒有資料</td></tr>';
     return;
   }
-  tableBody.innerHTML = rows.map((row) => {
+  tableBody.innerHTML = rows.map((row, index) => {
     const source = (row.chat_name || "").trim();
     const sourceLabel = source || "—";
     const discount = (row.top_discount_zhe || "").trim() || "—";
     return `
-    <tr class="data-row">
+    <tr class="data-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看歷史走勢">
       <td data-label="方向">${tradeSideTag(row.trade_side || "sell")}</td>
       <td data-label="型號"><div class="model-name">${row.model || row.model_key}</div><div class="model-key">${row.model_key || ""}</div></td>
       <td data-label="容量">${row.capacity || "—"}</td>
@@ -222,6 +344,7 @@ function applyFilters() {
     const haystack = [row.model, row.model_key, row.capacity, row.color, row.chat_name].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(keyword);
   });
+  window.filteredRows = filtered;
   renderTable(filtered);
   renderSummary(filtered, selectedDate);
   updateLastUpdated(latestSyncTime, selectedDate);
@@ -283,5 +406,38 @@ categoryTabs.addEventListener("click", (e) => {
 });
 searchInput.addEventListener("input", applyFilters);
 reloadBtn.addEventListener("click", () => boot());
+
+tableBody.addEventListener("click", (event) => {
+  const rowEl = event.target.closest(".data-row");
+  if (!rowEl) return;
+  const index = Number(rowEl.dataset.rowIndex);
+  const row = window.filteredRows?.[index];
+  if (row) openDetailPanel(row).catch((e) => {
+    detailTicks.innerHTML = `<span class="error">${e.message}</span>`;
+  });
+});
+
+tableBody.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const rowEl = event.target.closest(".data-row");
+  if (!rowEl) return;
+  event.preventDefault();
+  rowEl.click();
+});
+
+if (detailClose) {
+  detailClose.addEventListener("click", () => {
+    destroyCharts();
+    detailModal.close();
+  });
+}
+if (detailModal) {
+  detailModal.addEventListener("click", (event) => {
+    if (event.target === detailModal) {
+      destroyCharts();
+      detailModal.close();
+    }
+  });
+}
 
 boot();
