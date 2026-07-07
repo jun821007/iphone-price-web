@@ -582,7 +582,7 @@ function renderPriceCountStats(ticks) {
 
   const stats = [...byPrice.values()]
     .map((b) => ({ price: b.price, count: b.people.size, discount: b.discount }))
-    .sort((a, b) => b.count - a.count || a.price - b.price);
+    .sort((a, b) => b.price - a.price);
 
   if (!stats.length) return '<span class="muted">尚無報價統計</span>';
 
