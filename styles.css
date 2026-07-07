@@ -256,6 +256,96 @@ tbody tr:hover {
   color: var(--muted);
 }
 
+.compact-price-list {
+  display: block;
+}
+
+.compact-empty {
+  padding: 16px 14px;
+}
+
+.model-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.model-group:last-child {
+  border-bottom: none;
+}
+
+.model-group-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.model-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.model-group-summary::before {
+  content: "▸";
+  margin-right: 8px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.model-group[open] > .model-group-summary::before {
+  transform: rotate(90deg);
+}
+
+.model-group-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.compact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 14px 8px 30px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.compact-row.compact-header {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 700;
+  background: #f8fafc;
+}
+
+.compact-model {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.compact-price {
+  font-weight: 700;
+  color: var(--accent-dark);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.compact-row.row-clickable {
+  cursor: pointer;
+}
+
+.compact-row.row-clickable:hover,
+.compact-row.row-clickable:focus-visible {
+  background: #f8fafc;
+  outline: none;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -276,7 +366,12 @@ tbody tr:hover {
   }
 
   .dashboard {
-    display: none;
+    margin-top: 8px;
+  }
+
+  .dashboard .section-title {
+    font-size: 0.98rem;
+    margin-bottom: 8px;
   }
 
   .filters {
@@ -306,6 +401,14 @@ tbody tr:hover {
 
   thead {
     display: none;
+  }
+
+  .table-wrap table {
+    display: block;
+  }
+
+  .table-wrap tbody {
+    display: block;
   }
 
   .data-row {
@@ -614,6 +717,18 @@ tbody tr:hover {
 
   .dashboard .stat-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .compact-row {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 1fr);
+    gap: 6px;
+    padding-left: 22px;
+    font-size: 0.84rem;
+  }
+
+  .model-group-summary {
+    padding: 11px 10px;
+    font-size: 0.92rem;
   }
 }
 

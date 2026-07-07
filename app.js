@@ -37,6 +37,8 @@ const searchInput = document.getElementById("searchInput");
 const marketFilter = document.getElementById("marketFilter");
 const reloadBtn = document.getElementById("reloadBtn");
 const tableBody = document.getElementById("tableBody");
+const compactPriceList = document.getElementById("compactPriceList");
+const priceTable = document.querySelector(".table-wrap table");
 const summary = document.getElementById("summary");
 const lastUpdated = document.getElementById("lastUpdated");
 const categoryTabs = document.getElementById("categoryTabs");
@@ -303,6 +305,116 @@ async function saveClassification(row) {
 function tradeSideTag(side) {
   if (side === "buy") return '<span class="side-tag side-buy">買單</span>';
   return '<span class="side-tag side-sell">賣單</span>';
+}
+
+const MODEL_COLOR_RE = /(黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|星光|午夜)$/;
+
+function splitModelKey(modelKey) {
+  const key = (modelKey || "").trim();
+  const colorMatch = key.match(MODEL_COLOR_RE);
+  const color = colorMatch ? colorMatch[1] : "";
+  const body = color ? key.slice(0, -color.length) : key;
+  const capMatch = body.match(/(64|128|256|512|1T|2T)$/i);
+  const capacity = capMatch ? capMatch[1].toUpperCase() : "";
+  const model = capacity ? body.slice(0, -capacity.length).trim() : body.trim();
+  return { model, capacity, color };
+}
+
+function usesCompactCategory() {
+  return activeCategory === "new" || activeCategory === "used";
+}
+
+function modelGroupKey(row) {
+  return (row.model || splitModelKey(row.model_key).model || row.model_key || "").toLowerCase();
+}
+
+function modelGroupLabel(row) {
+  return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+}
+
+function showPriceTableView() {
+  if (priceTable) priceTable.hidden = false;
+  if (compactPriceList) compactPriceList.hidden = true;
+}
+
+function showCompactPriceView() {
+  if (priceTable) priceTable.hidden = true;
+  if (compactPriceList) compactPriceList.hidden = false;
+}
+
+function renderCompactPriceList(rows) {
+  if (!compactPriceList) return;
+  if (!rows.length) {
+    compactPriceList.innerHTML = '<div class="compact-empty muted">這個分類今天沒有資料</div>';
+    return;
+  }
+
+  const groups = new Map();
+  for (const row of rows) {
+    const key = modelGroupKey(row);
+    if (!groups.has(key)) {
+      groups.set(key, { label: modelGroupLabel(row), rows: [] });
+    }
+    groups.get(key).rows.push(row);
+  }
+
+  const sortedGroups = [...groups.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label, "zh-Hant"));
+  compactPriceList.innerHTML = sortedGroups.map(([, group]) => {
+    const sortedRows = [...group.rows].sort((a, b) => {
+      const cap = String(a.capacity || "").localeCompare(String(b.capacity || ""), undefined, { numeric: true });
+      if (cap) return cap;
+      const color = String(a.color || "").localeCompare(String(b.color || ""), "zh-Hant");
+      if (color) return color;
+      return (a.top_price ?? Number.POSITIVE_INFINITY) - (b.top_price ?? Number.POSITIVE_INFINITY);
+    });
+    const rowsHtml = sortedRows.map((row) => {
+      const index = rows.indexOf(row);
+      const modelLabel = row.model || group.label;
+      return `
+      <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
+        <span class="compact-model">${modelLabel}</span>
+        <span class="compact-color">${row.color || "—"}</span>
+        <span class="compact-capacity">${row.capacity || "—"}</span>
+        <span class="compact-price">${formatMaybePrice(row.top_price)}</span>
+      </div>`;
+    }).join("");
+
+    return `
+    <details class="model-group">
+      <summary class="model-group-summary">
+        <span class="model-group-name">${group.label}</span>
+        <span class="model-group-meta">${sortedRows.length} 規格</span>
+      </summary>
+      <div class="model-group-body">
+        <div class="compact-row compact-header">
+          <span>型號</span><span>顏色</span><span>容量</span><span>價格</span>
+        </div>
+        ${rowsHtml}
+      </div>
+    </details>`;
+  }).join("");
+}
+
+function renderPriceView(rows) {
+  if (usesCompactCategory()) {
+    showCompactPriceView();
+    renderCompactPriceList(rows);
+    return;
+  }
+  showPriceTableView();
+  renderTable(rows);
+}
+
+function setPriceViewMessage(message, type = "muted") {
+  if (usesCompactCategory()) {
+    showCompactPriceView();
+    if (compactPriceList) {
+      compactPriceList.innerHTML = `<div class="compact-empty ${type}">${message}</div>`;
+    }
+    return;
+  }
+  showPriceTableView();
+  tableBody.innerHTML = `<tr><td colspan="9" class="${type}">${message}</td></tr>`;
 }
 
 function renderPriceStats(priceStats) {
@@ -624,7 +736,7 @@ function applyFilters() {
     return haystack.includes(keyword);
   }));
   window.filteredRows = filtered;
-  renderTable(filtered);
+  renderPriceView(filtered);
   renderSummary(filtered, selectedDate);
   updateLastUpdated(latestSyncTime, selectedDate);
 }
@@ -657,11 +769,12 @@ async function loadAvailableDates() {
     opt.value = day; opt.textContent = day;
     dateSelect.appendChild(opt);
   }
+  if (dates.length) dateSelect.value = dates[0];
 }
 
 async function loadRowsForDate(selectedDate) {
   if (!selectedDate) return;
-  tableBody.innerHTML = '<tr><td colspan="9" class="muted">載入中…</td></tr>';
+  setPriceViewMessage("載入中…");
   const { data, error } = await supabaseClient
     .from(table("SUPABASE_TABLE"))
     .select("id,category,model_key,model,capacity,color,msrp,top_discount_zhe,top_price,total_quotes,price_stats,trade_side,chat_name,updated_at,device_type,condition_state,brand")
@@ -679,9 +792,9 @@ async function loadRowsForDate(selectedDate) {
       .eq("quote_date", selectedDate)
       .maybeSingle();
     if (stats?.updated_at) {
-      tableBody.innerHTML = `<tr><td colspan="9" class="muted">手機已同步（${stats.total_messages ?? 0} 則訊息），報價尚在累積中；請稍後再刷新或先開 LINE 讓訊息同步。</td></tr>`;
+      setPriceViewMessage(`手機已同步（${stats.total_messages ?? 0} 則訊息），報價尚在累積中；請稍後再刷新或先開 LINE 讓訊息同步。`);
     } else {
-      tableBody.innerHTML = '<tr><td colspan="9" class="muted">這個分類今天沒有資料</td></tr>';
+      setPriceViewMessage("這個分類今天沒有資料");
     }
   } else {
     applyFilters();
@@ -696,12 +809,12 @@ async function boot() {
     await loadAvailableDates();
     if (dateSelect.value) await loadRowsForDate(dateSelect.value);
   } catch (error) {
-    tableBody.innerHTML = `<tr><td colspan="9" class="error">${error.message}</td></tr>`;
+    setPriceViewMessage(error.message, "error");
   }
 }
 
 dateSelect.addEventListener("change", () => loadRowsForDate(dateSelect.value).catch((e) => {
-  tableBody.innerHTML = `<tr><td colspan="9" class="error">${e.message}</td></tr>`;
+  setPriceViewMessage(e.message, "error");
 }));
 categoryTabs.addEventListener("click", (e) => {
   const btn = e.target.closest(".tab");
@@ -737,6 +850,30 @@ tableBody.addEventListener("click", (event) => {
     detailTicks.innerHTML = `<span class="error">${e.message}</span>`;
   });
 });
+
+function openRowDetailFromIndex(index) {
+  const row = window.filteredRows?.[index];
+  if (!row) return;
+  openDetailPanel(row).catch((e) => {
+    detailTicks.innerHTML = `<span class="error">${e.message}</span>`;
+  });
+}
+
+if (compactPriceList) {
+  compactPriceList.addEventListener("click", (event) => {
+    const rowEl = event.target.closest(".compact-row.row-clickable");
+    if (!rowEl) return;
+    event.preventDefault();
+    openRowDetailFromIndex(Number(rowEl.dataset.rowIndex));
+  });
+  compactPriceList.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const rowEl = event.target.closest(".compact-row.row-clickable");
+    if (!rowEl) return;
+    event.preventDefault();
+    openRowDetailFromIndex(Number(rowEl.dataset.rowIndex));
+  });
+}
 
 tableBody.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
