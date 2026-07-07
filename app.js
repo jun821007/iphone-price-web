@@ -512,6 +512,13 @@ function showCompactPriceView() {
   if (compactPriceList) compactPriceList.hidden = false;
 }
 
+function topPriceQuoteCount(row) {
+  const top = row.top_price;
+  if (top == null) return 0;
+  const hit = (row.price_stats || []).find((p) => Number(p.price) === Number(top));
+  return hit?.count ?? 0;
+}
+
 function renderCompactPriceList(rows) {
   if (!compactPriceList) return;
   if (!rows.length) {
@@ -545,7 +552,7 @@ function renderCompactPriceList(rows) {
         <span class="compact-model">${modelLabel}</span>
         <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
-        <span class="compact-price">${formatMaybePrice(row.top_price)}<span class="compact-count">×${row.total_quotes ?? 0}</span></span>
+        <span class="compact-price">${formatMaybePrice(row.top_price)}<span class="compact-count">×${topPriceQuoteCount(row)}</span></span>
       </div>`;
     }).join("");
 
