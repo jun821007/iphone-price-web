@@ -336,6 +336,13 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+.compact-count {
+  margin-left: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #047857;
+}
+
 .compact-row.row-clickable {
   cursor: pointer;
 }

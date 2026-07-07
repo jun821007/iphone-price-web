@@ -545,7 +545,7 @@ function renderCompactPriceList(rows) {
         <span class="compact-model">${modelLabel}</span>
         <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
-        <span class="compact-price">${formatMaybePrice(row.top_price)}</span>
+        <span class="compact-price">${formatMaybePrice(row.top_price)}<span class="compact-count">×${row.total_quotes ?? 0}</span></span>
       </div>`;
     }).join("");
 
@@ -606,6 +606,17 @@ function formatShortTime(value) {
 function parseDiscountNumber(text) {
   const match = String(text || "").match(/([\d.]+)/);
   return match ? Number(match[1]) : null;
+}
+
+function formatDiscountValue(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  return `${Number(value).toFixed(2)}折`;
+}
+
+function formatDiscountLabel(text) {
+  const num = parseDiscountNumber(text);
+  if (num == null) return (text || "").trim() || "—";
+  return formatDiscountValue(num);
 }
 
 function destroyCharts() {
@@ -670,8 +681,9 @@ function aggregateDaily(ticks) {
     bucket.low = Math.min(bucket.low, t.price);
     const zhe = parseDiscountNumber(t.discount_zhe);
     if (zhe != null) {
-      bucket.discountHigh = bucket.discountHigh == null ? zhe : Math.max(bucket.discountHigh, zhe);
-      bucket.discountLow = bucket.discountLow == null ? zhe : Math.min(bucket.discountLow, zhe);
+      const rounded = Math.round(zhe * 100) / 100;
+      bucket.discountHigh = bucket.discountHigh == null ? rounded : Math.max(bucket.discountHigh, rounded);
+      bucket.discountLow = bucket.discountLow == null ? rounded : Math.min(bucket.discountLow, rounded);
     }
     byDay.set(day, bucket);
   }
@@ -693,7 +705,7 @@ async function openDetailPanel(row) {
   detailStats.innerHTML = `
     <div class="detail-stat"><span class="muted">建議售價</span><strong>${formatMaybePrice(row.msrp)}</strong></div>
     <div class="detail-stat"><span class="muted">今日熱門價</span><strong>${formatMaybePrice(row.top_price)}</strong></div>
-    <div class="detail-stat"><span class="muted">目前折數</span><strong>${(row.top_discount_zhe || "—")}</strong></div>
+    <div class="detail-stat"><span class="muted">目前折數</span><strong>${formatDiscountLabel(row.top_discount_zhe)}</strong></div>
   `;
   detailTicks.textContent = "載入中…";
   destroyCharts();
@@ -737,7 +749,7 @@ async function openDetailPanel(row) {
     discountChart = buildHighLowChart(
       discountChartCanvas, labels, discountHighs, discountLows,
       { high: "#dc2626", low: "#047857" },
-      (v) => `${v}折`,
+      (v) => formatDiscountValue(v),
     );
   }
 
@@ -807,7 +819,7 @@ function renderPriceCountStats(ticks) {
   if (!stats.length) return '<span class="muted">尚無報價統計</span>';
 
   return stats.map((s) => {
-    const discount = s.discount ? `<span class="muted">${s.discount}</span>` : "";
+    const discount = s.discount ? `<span class="muted">${formatDiscountLabel(s.discount)}</span>` : "";
     const peopleHtml = s.count > 0
       ? `<div class="price-people-list">${renderPricePeopleList(s.people)}</div>`
       : "";
