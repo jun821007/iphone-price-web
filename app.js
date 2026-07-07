@@ -564,31 +564,82 @@ async function openDetailPanel(row) {
   detailTicks.innerHTML = renderPriceCountStats(ticks);
 }
 
-function renderPriceCountStats(ticks) {
+const PRICE_PEOPLE_LIMIT = 30;
+
+function personKeyFromTick(t) {
+  return (t.from_mid || "").trim()
+    || (t.sender_name || "").trim()
+    || `${t.quoted_at || ""}`;
+}
+
+function formatPersonLabel(t) {
+  const mid = (t.from_mid || "").trim();
+  const midShort = mid ? mid.slice(-8) : "—";
+  const who = (t.sender_name || "").trim() || `未知(${midShort})`;
+  const group = (t.chat_name || "").trim();
+  return { who, group };
+}
+
+function buildPriceStatsBuckets(ticks) {
   const byPrice = new Map();
   for (const t of ticks) {
     if (t.price == null) continue;
     const price = Number(t.price);
     if (!byPrice.has(price)) {
-      byPrice.set(price, { price, people: new Set(), discount: t.discount_zhe || "" });
+      byPrice.set(price, { price, people: new Map(), discount: "" });
     }
     const bucket = byPrice.get(price);
-    const personKey = (t.from_mid || "").trim()
-      || (t.sender_name || "").trim()
-      || `${t.quoted_at || ""}`;
-    bucket.people.add(personKey);
+    const pk = personKeyFromTick(t);
+    const existing = bucket.people.get(pk);
+    const ts = parseTimestamp(t.quoted_at)?.getTime() ?? 0;
+    const existingTs = existing ? (parseTimestamp(existing.quoted_at)?.getTime() ?? 0) : -1;
+    if (!existing || ts >= existingTs) {
+      bucket.people.set(pk, t);
+    }
     if (!bucket.discount && t.discount_zhe) bucket.discount = t.discount_zhe;
   }
 
-  const stats = [...byPrice.values()]
-    .map((b) => ({ price: b.price, count: b.people.size, discount: b.discount }))
-    .sort((a, b) => b.price - a.price);
+  return [...byPrice.values()].map((b) => ({
+    price: b.price,
+    count: b.people.size,
+    discount: b.discount,
+    people: [...b.people.values()].sort(
+      (a, c) => (parseTimestamp(c.quoted_at)?.getTime() ?? 0) - (parseTimestamp(a.quoted_at)?.getTime() ?? 0),
+    ),
+  })).sort((a, b) => b.price - a.price);
+}
 
+function renderPricePeopleList(people) {
+  const visible = people.slice(0, PRICE_PEOPLE_LIMIT);
+  const rest = people.length - visible.length;
+  const rows = visible.map((t) => {
+    const { who, group } = formatPersonLabel(t);
+    const when = formatShortTime(t.quoted_at);
+    const meta = [group, when].filter(Boolean).join(" · ");
+    return `<div class="price-person-row"><span class="price-person-name">${who}</span><span class="price-person-meta muted">${meta || "—"}</span></div>`;
+  }).join("");
+  const more = rest > 0 ? `<div class="price-person-more muted">還有 ${rest} 人</div>` : "";
+  return rows + more;
+}
+
+function renderPriceCountStats(ticks) {
+  const stats = buildPriceStatsBuckets(ticks);
   if (!stats.length) return '<span class="muted">尚無報價統計</span>';
 
   return stats.map((s) => {
     const discount = s.discount ? `<span class="muted">${s.discount}</span>` : "";
-    return `<div class="detail-tick-row price-count-row"><strong>${formatPrice(s.price)}</strong><span class="count-badge">× ${s.count}</span>${discount}</div>`;
+    const peopleHtml = s.count > 0
+      ? `<div class="price-people-list">${renderPricePeopleList(s.people)}</div>`
+      : "";
+    return `
+    <details class="price-count-item">
+      <summary class="detail-tick-row price-count-row">
+        <strong>${formatPrice(s.price)}</strong>
+        <span class="count-badge">× ${s.count}</span>
+        ${discount}
+      </summary>
+      ${peopleHtml}
+    </details>`;
   }).join("");
 }
 

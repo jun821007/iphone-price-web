@@ -873,6 +873,74 @@ tbody tr:hover {
   color: #047857;
 }
 
+.price-count-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.price-count-item > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.price-count-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.price-count-item > summary.price-count-row {
+  border: none;
+  border-radius: 0;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+}
+
+.price-count-item > summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.price-count-item[open] > summary::before {
+  content: "▾";
+}
+
+.price-count-item[open] > summary {
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.price-people-list {
+  padding: 6px 10px 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.price-person-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 0.84rem;
+}
+
+.price-person-name {
+  font-weight: 600;
+}
+
+.price-person-meta {
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.price-person-more {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+}
+
 @media (max-width: 720px) {
   .detail-stats {
     grid-template-columns: 1fr;
@@ -884,6 +952,10 @@ tbody tr:hover {
 
   .detail-tick-row.price-count-row {
     grid-template-columns: 1fr auto auto;
+  }
+
+  .price-count-item > summary.price-count-row {
+    grid-template-columns: auto 1fr auto auto;
   }
 }
 
