@@ -522,7 +522,7 @@ async function openDetailPanel(row) {
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
   const { data, error } = await supabaseClient
     .from(ticksTable)
-    .select("quoted_at,quote_date,price,discount_zhe,chat_name,sender_name")
+    .select("quoted_at,quote_date,price,discount_zhe,chat_name,sender_name,from_mid")
     .eq("category", row.category)
     .eq("model_key", row.model_key)
     .eq("trade_side", row.trade_side || "sell")
@@ -561,12 +561,34 @@ async function openDetailPanel(row) {
     );
   }
 
-  const recent = [...ticks].reverse().slice(0, 15);
-  detailTicks.innerHTML = recent.map((t) => {
-    const who = (t.sender_name || "").trim() || "—";
-    const group = (t.chat_name || "").trim();
-    const meta = group ? ` · ${group}` : "";
-    return `<div class="detail-tick-row"><span>${formatShortTime(t.quoted_at)}</span><strong>${formatPrice(t.price)}</strong><span>${t.discount_zhe || "—"}</span><span class="muted">${who}${meta}</span></div>`;
+  detailTicks.innerHTML = renderPriceCountStats(ticks);
+}
+
+function renderPriceCountStats(ticks) {
+  const byPrice = new Map();
+  for (const t of ticks) {
+    if (t.price == null) continue;
+    const price = Number(t.price);
+    if (!byPrice.has(price)) {
+      byPrice.set(price, { price, people: new Set(), discount: t.discount_zhe || "" });
+    }
+    const bucket = byPrice.get(price);
+    const personKey = (t.from_mid || "").trim()
+      || (t.sender_name || "").trim()
+      || `${t.quoted_at || ""}`;
+    bucket.people.add(personKey);
+    if (!bucket.discount && t.discount_zhe) bucket.discount = t.discount_zhe;
+  }
+
+  const stats = [...byPrice.values()]
+    .map((b) => ({ price: b.price, count: b.people.size, discount: b.discount }))
+    .sort((a, b) => b.count - a.count || a.price - b.price);
+
+  if (!stats.length) return '<span class="muted">尚無報價統計</span>';
+
+  return stats.map((s) => {
+    const discount = s.discount ? `<span class="muted">${s.discount}</span>` : "";
+    return `<div class="detail-tick-row price-count-row"><strong>${formatPrice(s.price)}</strong><span class="count-badge">× ${s.count}</span>${discount}</div>`;
   }).join("");
 }
 
@@ -623,11 +645,7 @@ async function fetchLatestSyncTime(selectedDate) {
 
 function renderSummary(rows, selectedDate) {
   const label = CATEGORY_LABELS[activeCategory] || activeCategory;
-  const marketLabel = MARKET_LABELS[activeMarketFilter];
-  const marketBadge = activeMarketFilter
-    ? `<div class="summary-badge market-badge">${marketLabel} · 依熱門價由低到高</div>`
-    : "";
-  summary.innerHTML = `${marketBadge}<div class="summary-badge">${label}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個商品規格</div>`;
+  summary.innerHTML = `<div class="summary-badge">${label}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個商品規格</div>`;
 }
 
 function formatSenderDisplay(row) {

@@ -23,51 +23,52 @@
     </header>
 
     <section id="dashboard" class="dashboard card">
-      <h2 class="section-title">今日打卡儀表板</h2>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">訊息數</div><div id="statMessages" class="stat-value">—</div></div>
-        <div class="stat-box"><div class="stat-label">觀測筆數</div><div id="statObservations" class="stat-value">—</div></div>
-        <div class="stat-box"><div class="stat-label">商品規格</div><div id="statRecords" class="stat-value">—</div></div>
-        <div class="stat-box highlight"><div class="stat-label">報價總次數</div><div id="statQuotes" class="stat-value">—</div></div>
-      </div>
-      <div class="leaderboards">
-        <div class="leaderboard">
-          <h3>情報來源排行（跨群累計）</h3>
+      <details class="collapse-section" open>
+        <summary class="collapse-summary section-title">今日打卡儀表板</summary>
+        <div class="collapse-body">
+          <div class="stat-grid">
+            <div class="stat-box"><div class="stat-label">訊息數</div><div id="statMessages" class="stat-value">—</div></div>
+            <div class="stat-box"><div class="stat-label">觀測筆數</div><div id="statObservations" class="stat-value">—</div></div>
+            <div class="stat-box"><div class="stat-label">商品規格</div><div id="statRecords" class="stat-value">—</div></div>
+            <div class="stat-box highlight"><div class="stat-label">報價總次數</div><div id="statQuotes" class="stat-value">—</div></div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <details class="collapse-section">
+        <summary class="collapse-summary section-title">情報來源排行（跨群累計）</summary>
+        <div class="collapse-body">
           <ol id="senderLeaderboard" class="rank-list"></ol>
         </div>
-        <div class="leaderboard">
-          <h3>機型熱度排行（次數多＝市場貨量多）</h3>
+      </details>
+    </section>
+
+    <section class="card">
+      <details class="collapse-section">
+        <summary class="collapse-summary section-title">機型熱度排行（次數多＝市場貨量多）</summary>
+        <div class="collapse-body">
           <ol id="modelLeaderboard" class="rank-list"></ol>
         </div>
-      </div>
+      </details>
     </section>
 
-    <section class="filters card">
-      <div class="filter-row">
-        <label for="dateSelect">日期</label>
-        <select id="dateSelect"><option value="">載入中…</option></select>
-      </div>
-      <div class="filter-row grow">
-        <label for="searchInput">搜尋型號</label>
-        <input id="searchInput" type="search" placeholder="例如 17pro、AirPodsPro3" />
-      </div>
-      <button id="reloadBtn" type="button" class="btn-primary">重新載入</button>
-    </section>
-
-    <section class="filters card market-filters">
-      <div class="filter-row">
-        <label for="marketFilter">市場總覽</label>
-        <select id="marketFilter">
-          <option value="">全部</option>
-          <option value="new">全新</option>
-          <option value="used">二手</option>
-          <option value="phone">手機</option>
-          <option value="tablet">平板</option>
-          <option value="accessory">配件</option>
-          <option value="wearable">穿戴</option>
-          <option value="computer">電腦</option>
-        </select>
-      </div>
+    <section class="card">
+      <details class="collapse-section">
+        <summary class="collapse-summary section-title">日期・搜尋型號</summary>
+        <div class="collapse-body filters">
+          <div class="filter-row">
+            <label for="dateSelect">日期</label>
+            <select id="dateSelect"><option value="">載入中…</option></select>
+          </div>
+          <div class="filter-row grow">
+            <label for="searchInput">搜尋型號</label>
+            <input id="searchInput" type="search" placeholder="例如 17pro、AirPodsPro3" />
+          </div>
+          <button id="reloadBtn" type="button" class="btn-primary">重新載入</button>
+        </div>
+      </details>
     </section>
 
     <nav class="tabs" id="categoryTabs" role="tablist">
@@ -123,21 +124,21 @@
           <p id="classifyStatus" class="classify-status muted" aria-live="polite"></p>
         </details>
       </section>
+      <div class="detail-ticks-wrap">
+        <h3 class="detail-section-title">報價統計次數（同一人不累加）</h3>
+        <div id="detailTicks" class="detail-ticks muted">載入中…</div>
+      </div>
       <div class="detail-chart-wrap">
         <canvas id="priceChart" aria-label="歷史價格走勢"></canvas>
       </div>
       <div class="detail-chart-wrap">
         <canvas id="discountChart" aria-label="歷史折數走勢"></canvas>
       </div>
-      <div class="detail-ticks-wrap">
-        <h3 class="detail-section-title">最近報價紀錄</h3>
-        <div id="detailTicks" class="detail-ticks muted">載入中…</div>
-      </div>
     </div>
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});
