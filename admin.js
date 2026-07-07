@@ -802,6 +802,40 @@ async function autoApproveLearnedRows(rows) {
   return count;
 }
 
+function cloneApprovalOptions(options) {
+  return {
+    ...options,
+    colorsToUse: [...(options.colorsToUse || [])],
+  };
+}
+
+async function autoApproveExactRawLineMatches(pendingRow, options) {
+  const rawLine = pendingRow?.raw_line;
+  const date = pendingDate.value;
+  if (!rawLine || !date) return 0;
+
+  const { data, error } = await supabaseClient
+    .from(table("SUPABASE_PENDING_TABLE"))
+    .select("*")
+    .eq("quote_date", date)
+    .eq("status", "pending")
+    .eq("raw_line", rawLine)
+    .neq("id", pendingRow.id)
+    .order("id", { ascending: false });
+  if (error) throw error;
+
+  let count = 0;
+  for (const row of data || []) {
+    try {
+      await executeApproval(row, cloneApprovalOptions(options));
+      count += 1;
+    } catch (error) {
+      console.warn("exact raw-line auto approve failed", row.id, error);
+    }
+  }
+  return count;
+}
+
 async function approvePending(card, rowId) {
   const pendingRow = pendingRowsById[rowId];
   const parsedColors = (card.dataset.parsedColors || "").split(",").filter(Boolean);
@@ -824,7 +858,13 @@ async function approvePending(card, rowId) {
   }
 
   await executeApproval(pendingRow, options);
+  const exactAutoCount = await autoApproveExactRawLineMatches(pendingRow, options);
   await loadPending();
+  if (statAutoHint) {
+    statAutoHint.textContent = exactAutoCount > 0
+      ? `同文字自動核准 ${exactAutoCount} 筆`
+      : statAutoHint.textContent;
+  }
 }
 
 async function rejectPending(rowId) {
