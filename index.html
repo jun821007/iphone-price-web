@@ -47,7 +47,7 @@
 
     <section class="card">
       <details class="collapse-section">
-        <summary class="collapse-summary section-title">機型熱度排行（次數多＝市場貨量多）</summary>
+        <summary class="collapse-summary section-title">機型熱度排行（報價次數，同一人可累加）</summary>
         <div class="collapse-body">
           <ol id="modelLeaderboard" class="rank-list"></ol>
         </div>
@@ -116,7 +116,9 @@
           <summary class="detail-section-title detail-classify-summary">分類修正</summary>
           <p id="classifyCurrent" class="classify-current muted"></p>
           <div class="pending-bind-grid" id="classifyForm">
-            <label>設備類型<select id="classifyDevice"></select></label>
+            <label>型號<select id="classifyBaseModel"></select></label>
+            <label>容量<select id="classifyCapacity"></select></label>
+            <label>顏色<select id="classifyColor"></select></label>
             <label>品牌<select id="classifyBrand"></select></label>
             <label>新舊<select id="classifyCondition"></select></label>
           </div>
@@ -138,7 +140,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});

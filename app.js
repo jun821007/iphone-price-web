@@ -18,6 +18,9 @@ const CONDITION_OPTIONS = [
   { value: "unknown", label: "未知" },
 ];
 
+const CAPACITY_OPTIONS = ["", "64", "128", "256", "512", "1T", "2T"];
+const COLOR_OPTIONS = ["", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "星光", "午夜"];
+
 const FALLBACK_DEVICE_TYPES = [
   { code: "phone", label: "手機" },
   { code: "tablet", label: "平板" },
@@ -57,7 +60,9 @@ const detailClose = document.getElementById("detailClose");
 const priceChartCanvas = document.getElementById("priceChart");
 const discountChartCanvas = document.getElementById("discountChart");
 const classifyCurrent = document.getElementById("classifyCurrent");
-const classifyDevice = document.getElementById("classifyDevice");
+const classifyBaseModel = document.getElementById("classifyBaseModel");
+const classifyCapacity = document.getElementById("classifyCapacity");
+const classifyColor = document.getElementById("classifyColor");
 const classifyBrand = document.getElementById("classifyBrand");
 const classifyCondition = document.getElementById("classifyCondition");
 const classifySave = document.getElementById("classifySave");
@@ -73,6 +78,8 @@ let discountChart = null;
 let currentDetailRow = null;
 let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
+let catalogByCategory = {};
+let modelCatalogLoaded = false;
 
 function table(name) {
   const value = window[name];
@@ -193,6 +200,79 @@ async function loadTaxonomy() {
   if (!brErr && br?.length) brands = br;
 }
 
+function buildCatalogIndex(rows) {
+  catalogByCategory = {};
+  for (const row of rows) {
+    const category = row.category || "new";
+    if (!catalogByCategory[category]) {
+      catalogByCategory[category] = { baseModels: new Set() };
+    }
+    const base = row.model || splitModelKey(row.model_key).model;
+    if (base) catalogByCategory[category].baseModels.add(base);
+  }
+}
+
+async function loadModelCatalog() {
+  if (modelCatalogLoaded) return;
+  const msrpTable = table("SUPABASE_MSRP_TABLE");
+  const [{ data, error }, { data: msrpRows, error: msrpError }] = await Promise.all([
+    supabaseClient.from(table("SUPABASE_TABLE")).select("category,model_key,model").order("model_key").limit(5000),
+    supabaseClient.from(msrpTable).select("category,model_key").order("model_key"),
+  ]);
+  if (error) throw error;
+  if (msrpError && msrpError.code !== "42P01") throw msrpError;
+  const rows = [];
+  const seen = new Set();
+  for (const row of data || []) {
+    const key = `${row.category}|${row.model_key}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(row);
+  }
+  for (const row of msrpRows || []) {
+    const key = `${row.category}|${row.model_key}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ category: row.category, model_key: row.model_key, model: splitModelKey(row.model_key).model });
+  }
+  buildCatalogIndex(rows);
+  modelCatalogLoaded = true;
+}
+
+function getBaseModelsForCategory(category) {
+  const fromCatalog = [...(catalogByCategory[category]?.baseModels || [])];
+  const fromDay = [...new Set(
+    allRows
+      .filter((r) => r.category === category)
+      .map((r) => r.model || splitModelKey(r.model_key).model)
+      .filter(Boolean),
+  )];
+  return [...new Set([...fromCatalog, ...fromDay])].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+}
+
+function composeModelKey(baseModel, capacity, color) {
+  if (!baseModel) return "";
+  return `${baseModel}${capacity || ""}${color || ""}`.toLowerCase().replace(/\s/g, "");
+}
+
+function mergePriceStats(a, b) {
+  const out = [...(a || [])];
+  for (const item of b || []) {
+    const hit = out.find((p) => p.price === item.price);
+    if (hit) hit.count += item.count;
+    else out.push({ ...item });
+  }
+  return out;
+}
+
+function pickTopPrice(priceStats) {
+  if (!priceStats?.length) return null;
+  return priceStats.reduce(
+    (best, p) => (p.count > best.count || (p.count === best.count && p.price < best.price) ? p : best),
+    priceStats[0],
+  ).price;
+}
+
 function renderClassificationBadges(row) {
   const device = deviceTypeLabel(inferDeviceType(row));
   const brand = brandLabel(row.brand || "apple");
@@ -205,13 +285,26 @@ function renderClassificationBadges(row) {
 }
 
 function populateClassifyForm(row) {
-  const device = inferDeviceType(row);
+  const parts = splitModelKey(row.model_key);
+  const baseModel = row.model || parts.model || "";
+  const capacity = row.capacity || parts.capacity || "";
+  const color = row.color || parts.color || "";
   const brand = row.brand || "apple";
   const condition = inferCondition(row);
   fillSelect(
-    classifyDevice,
-    deviceTypes.map((d) => ({ value: d.code, label: d.label })),
-    device,
+    classifyBaseModel,
+    [{ value: "", label: "請選型號" }, ...getBaseModelsForCategory(row.category).map((b) => ({ value: b, label: b }))],
+    baseModel,
+  );
+  fillSelect(
+    classifyCapacity,
+    [{ value: "", label: "容量" }, ...CAPACITY_OPTIONS.filter(Boolean).map((c) => ({ value: c, label: c }))],
+    capacity,
+  );
+  fillSelect(
+    classifyColor,
+    [{ value: "", label: "顏色" }, ...COLOR_OPTIONS.filter(Boolean).map((c) => ({ value: c, label: c }))],
+    color,
   );
   fillSelect(
     classifyBrand,
@@ -220,7 +313,8 @@ function populateClassifyForm(row) {
   );
   fillSelect(classifyCondition, CONDITION_OPTIONS, condition);
   if (classifyCurrent) {
-    classifyCurrent.textContent = `目前：${deviceTypeLabel(device)} · ${brandLabel(brand)} · ${conditionLabel(condition)}`;
+    const spec = [baseModel, capacity, color].filter(Boolean).join(" ");
+    classifyCurrent.textContent = `目前：${spec || row.model_key} · ${brandLabel(brand)} · ${conditionLabel(condition)}`;
   }
   if (classifyStatus) {
     classifyStatus.textContent = "";
@@ -241,29 +335,110 @@ async function saveClassification(row) {
     setClassifyStatus("請先選擇日期", "error");
     return;
   }
-  const deviceType = classifyDevice?.value || inferDeviceType(row);
+  const parts = splitModelKey(row.model_key);
+  const baseModel = (classifyBaseModel?.value || row.model || parts.model || "").trim();
+  const capacity = classifyCapacity?.value ?? row.capacity ?? "";
+  const color = classifyColor?.value ?? row.color ?? "";
+  if (!baseModel) {
+    setClassifyStatus("請選擇型號", "error");
+    return;
+  }
   const brand = classifyBrand?.value || row.brand || "apple";
   const condition = classifyCondition?.value || inferCondition(row);
   const tradeSide = row.trade_side || "sell";
+  const oldModelKey = row.model_key;
+  const newModelKey = composeModelKey(baseModel, capacity, color);
+  const deviceType = inferDeviceType({ ...row, model_key: newModelKey, model: baseModel, category: row.category });
   const now = new Date().toISOString();
   const pricesTable = table("SUPABASE_TABLE");
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
 
   setClassifyStatus("儲存中…");
 
-  const { error: priceError } = await supabaseClient
-    .from(pricesTable)
-    .update({
+  if (newModelKey !== oldModelKey) {
+    const { data: existing, error: findError } = await supabaseClient
+      .from(pricesTable)
+      .select("id,price_stats,total_quotes,top_price,top_discount_zhe")
+      .eq("quote_date", quoteDate)
+      .eq("category", row.category)
+      .eq("model_key", newModelKey)
+      .eq("trade_side", tradeSide)
+      .maybeSingle();
+    if (findError) throw findError;
+
+    if (existing && existing.id !== row.id) {
+      const mergedStats = mergePriceStats(existing.price_stats, row.price_stats);
+      const totalQuotes = mergedStats.reduce((s, p) => s + p.count, 0);
+      const { error: mergeError } = await supabaseClient.from(pricesTable).update({
+        price_stats: mergedStats,
+        total_quotes: totalQuotes,
+        top_price: pickTopPrice(mergedStats),
+        device_type: deviceType,
+        brand,
+        condition_state: condition,
+        model: baseModel,
+        capacity,
+        color,
+        updated_at: now,
+      }).eq("id", existing.id);
+      if (mergeError) throw mergeError;
+      const { error: deleteError } = await supabaseClient.from(pricesTable).delete().eq("id", row.id);
+      if (deleteError) throw deleteError;
+      row.id = existing.id;
+    } else {
+      const { error: priceError } = await supabaseClient.from(pricesTable).update({
+        model_key: newModelKey,
+        model: baseModel,
+        capacity,
+        color,
+        device_type: deviceType,
+        brand,
+        condition_state: condition,
+        updated_at: now,
+      }).eq("id", row.id);
+      if (priceError) throw priceError;
+    }
+
+    const { error: tickError } = await supabaseClient.from(ticksTable).update({
+      model_key: newModelKey,
+      model: baseModel,
+      capacity,
+      color,
+      device_type: deviceType,
+      brand,
+      condition_state: condition,
+    })
+      .eq("quote_date", quoteDate)
+      .eq("category", row.category)
+      .eq("model_key", oldModelKey)
+      .eq("trade_side", tradeSide);
+    if (tickError) throw tickError;
+  } else {
+    const { error: priceError } = await supabaseClient.from(pricesTable).update({
+      model: baseModel,
+      capacity,
+      color,
       device_type: deviceType,
       brand,
       condition_state: condition,
       updated_at: now,
+    }).eq("id", row.id);
+    if (priceError) throw priceError;
+
+    const { error: tickError } = await supabaseClient.from(ticksTable).update({
+      model: baseModel,
+      capacity,
+      color,
+      device_type: deviceType,
+      brand,
+      condition_state: condition,
     })
-    .eq("quote_date", quoteDate)
-    .eq("category", row.category)
-    .eq("model_key", row.model_key)
-    .eq("trade_side", tradeSide);
-  if (priceError) throw priceError;
+      .eq("quote_date", quoteDate)
+      .eq("category", row.category)
+      .eq("model_key", oldModelKey)
+      .eq("trade_side", tradeSide);
+    if (tickError) throw tickError;
+  }
 
   if (row.id) {
     const { error: overrideError } = await supabaseClient.from("classification_overrides").upsert({
@@ -272,31 +447,35 @@ async function saveClassification(row) {
       device_type_code: deviceType,
       brand_code: brand,
       condition_state: condition,
-      model_display: row.model || row.model_key,
-      capacity: row.capacity || "",
-      color: row.color || "",
+      model_display: baseModel,
+      capacity,
+      color,
       corrected_by: "main_board",
     }, { onConflict: "target_table,target_id" });
     if (overrideError) throw overrideError;
   }
 
-  const { error: tickError } = await supabaseClient
-    .from(ticksTable)
-    .update({
-      device_type: deviceType,
-      brand,
-      condition_state: condition,
-    })
-    .eq("quote_date", quoteDate)
-    .eq("category", row.category)
-    .eq("model_key", row.model_key)
-    .eq("trade_side", tradeSide);
-  if (tickError) throw tickError;
-
+  const oldId = row.id;
+  row.model_key = newModelKey;
+  row.model = baseModel;
+  row.capacity = capacity;
+  row.color = color;
   row.device_type = deviceType;
   row.brand = brand;
   row.condition_state = condition;
   currentDetailRow = row;
+
+  const oldIdx = allRows.findIndex((r) => r.id === oldId);
+  if (oldIdx >= 0) {
+    if (newModelKey !== oldModelKey) {
+      const dupIdx = allRows.findIndex((r) => r.id !== oldId && r.model_key === newModelKey && r.category === row.category && (r.trade_side || "sell") === tradeSide);
+      if (dupIdx >= 0) allRows.splice(oldIdx, 1);
+      else allRows[oldIdx] = { ...allRows[oldIdx], ...row };
+    } else {
+      allRows[oldIdx] = { ...allRows[oldIdx], ...row };
+    }
+  }
+
   populateClassifyForm(row);
   setClassifyStatus("已儲存分類（含當日 quote_ticks）", "ok");
   applyFilters();
@@ -502,6 +681,7 @@ function aggregateDaily(ticks) {
 
 async function openDetailPanel(row) {
   if (!detailModal) return;
+  await loadModelCatalog();
   currentDetailRow = row;
   populateClassifyForm(row);
   const classifyDetails = document.querySelector(".detail-classify-details");
@@ -859,6 +1039,7 @@ async function boot() {
   try {
     initClient();
     await loadTaxonomy();
+    await loadModelCatalog();
     await loadAvailableDates();
     if (dateSelect.value) await loadRowsForDate(dateSelect.value);
   } catch (error) {
@@ -891,7 +1072,7 @@ tableBody.addEventListener("click", (event) => {
       openDetailPanel(row).catch((e) => {
         setClassifyStatus(e.message, "error");
       });
-      classifyDevice?.focus();
+      classifyBaseModel?.focus();
     }
     return;
   }
