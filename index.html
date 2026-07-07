@@ -47,7 +47,7 @@
 
     <section class="card">
       <details class="collapse-section">
-        <summary class="collapse-summary section-title">機型熱度排行（報價次數，同一人可累加）</summary>
+        <summary class="collapse-summary section-title">機型熱度排行（同一人只算 1 次）</summary>
         <div class="collapse-body">
           <ol id="modelLeaderboard" class="rank-list"></ol>
         </div>
@@ -140,7 +140,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});

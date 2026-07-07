@@ -905,18 +905,23 @@ function renderLeaderboards(senderRows, modelRows) {
     : '<li class="muted">尚無資料（需執行 migration + 重跑腳本）</li>';
 
   modelLeaderboard.innerHTML = modelRows.length
-    ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} 次</span></li>`).join("")
+    ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} 人</span></li>`).join("")
     : '<li class="muted">尚無資料</li>';
 }
 
 async function loadDashboard(selectedDate) {
   const statsTable = table("SUPABASE_STATS_TABLE");
   const senderTable = table("SUPABASE_SENDER_STATS_TABLE");
+  const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
 
-  const [{ data: stats, error: statsError }, { data: senders, error: senderError }, { data: prices }] = await Promise.all([
+  const [
+    { data: stats, error: statsError },
+    { data: senders, error: senderError },
+    { data: ticks, error: ticksError },
+  ] = await Promise.all([
     supabaseClient.from(statsTable).select("*").eq("quote_date", selectedDate).maybeSingle(),
     supabaseClient.from(senderTable).select("from_mid,sender_name,top_chat_name,message_count,quote_count").eq("quote_date", selectedDate).order("quote_count", { ascending: false }).limit(10),
-    supabaseClient.from(table("SUPABASE_TABLE")).select("model_key,total_quotes").eq("quote_date", selectedDate),
+    supabaseClient.from(ticksTable).select("model_key,from_mid,sender_name").eq("quote_date", selectedDate).limit(10000),
   ]);
 
   if (statsError?.code === "42P01") {
@@ -925,11 +930,14 @@ async function loadDashboard(selectedDate) {
     statRecords.textContent = "—";
     statQuotes.textContent = "—";
     senderLeaderboard.innerHTML = '<li class="muted">資料表不存在，請在 Supabase 執行 supabase_migration_v2.sql</li>';
-    renderLeaderboards([], buildModelRows(prices));
+    renderLeaderboards([], buildModelRowsFromTicks(ticks));
     return;
   }
   if (statsError) throw statsError;
   if (senderError && senderError.code !== "42P01") throw senderError;
+  if (ticksError && ticksError.code !== "42P01") throw ticksError;
+
+  const modelRows = buildModelRowsFromTicks(ticks);
 
   if (!stats) {
     statMessages.textContent = "—";
@@ -937,25 +945,30 @@ async function loadDashboard(selectedDate) {
     statRecords.textContent = "—";
     statQuotes.textContent = "—";
     senderLeaderboard.innerHTML = '<li class="muted">尚無同步紀錄（手機 run.py / config.py 需 v2 版，跑完應寫入 daily_run_stats）</li>';
-    modelLeaderboard.innerHTML = buildModelRows(prices).length
-      ? buildModelRows(prices).map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} 次</span></li>`).join("")
+    modelLeaderboard.innerHTML = modelRows.length
+      ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} 人</span></li>`).join("")
       : '<li class="muted">尚無資料</li>';
   } else {
     statMessages.textContent = stats.total_messages ?? "—";
     statObservations.textContent = stats.total_observations ?? "—";
     statRecords.textContent = stats.total_records ?? "—";
     statQuotes.textContent = stats.total_quotes ?? "—";
-    renderLeaderboards(senders || [], buildModelRows(prices));
+    renderLeaderboards(senders || [], modelRows);
   }
 }
 
-function buildModelRows(prices) {
-  const modelMap = {};
-  for (const row of prices || []) {
-    modelMap[row.model_key] = (modelMap[row.model_key] || 0) + (row.total_quotes || 0);
+function buildModelRowsFromTicks(ticks) {
+  const byModel = new Map();
+  for (const t of ticks || []) {
+    const modelKey = (t.model_key || "").trim();
+    if (!modelKey) continue;
+    if (!byModel.has(modelKey)) byModel.set(modelKey, new Set());
+    byModel.get(modelKey).add(personKeyFromTick(t));
   }
-  return Object.entries(modelMap).map(([model_key, total]) => ({ model_key, total }))
-    .sort((a, b) => b.total - a.total).slice(0, 10);
+  return [...byModel.entries()]
+    .map(([model_key, people]) => ({ model_key, total: people.size }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10);
 }
 
 function applyFilters() {
