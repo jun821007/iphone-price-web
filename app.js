@@ -640,9 +640,17 @@ function setActiveCategory(category) {
 }
 
 async function loadAvailableDates() {
-  const { data, error } = await supabaseClient.from(table("SUPABASE_TABLE")).select("quote_date").order("quote_date", { ascending: false });
-  if (error) throw error;
-  const dates = [...new Set((data || []).map((r) => r.quote_date))];
+  const statsTable = table("SUPABASE_STATS_TABLE");
+  const [{ data: priceDates, error: priceError }, { data: statDates, error: statError }] = await Promise.all([
+    supabaseClient.from(table("SUPABASE_TABLE")).select("quote_date").order("quote_date", { ascending: false }),
+    supabaseClient.from(statsTable).select("quote_date").order("quote_date", { ascending: false }),
+  ]);
+  if (priceError) throw priceError;
+  if (statError && statError.code !== "42P01") throw statError;
+  const dates = [...new Set([
+    ...(priceDates || []).map((r) => r.quote_date),
+    ...(statDates || []).map((r) => r.quote_date),
+  ])].sort().reverse();
   dateSelect.innerHTML = dates.length ? "" : '<option value="">尚無資料</option>';
   for (const day of dates) {
     const opt = document.createElement("option");
@@ -663,7 +671,22 @@ async function loadRowsForDate(selectedDate) {
   allRows = data || [];
   latestSyncTime = await fetchLatestSyncTime(selectedDate);
   await loadDashboard(selectedDate);
-  applyFilters();
+  if (!allRows.length) {
+    const statsTable = table("SUPABASE_STATS_TABLE");
+    const { data: stats } = await supabaseClient
+      .from(statsTable)
+      .select("total_messages,total_records,updated_at")
+      .eq("quote_date", selectedDate)
+      .maybeSingle();
+    if (stats?.updated_at) {
+      tableBody.innerHTML = `<tr><td colspan="9" class="muted">手機已同步（${stats.total_messages ?? 0} 則訊息），報價尚在累積中；請稍後再刷新或先開 LINE 讓訊息同步。</td></tr>`;
+    } else {
+      tableBody.innerHTML = '<tr><td colspan="9" class="muted">這個分類今天沒有資料</td></tr>';
+    }
+  } else {
+    applyFilters();
+  }
+  updateLastUpdated(latestSyncTime, selectedDate);
 }
 
 async function boot() {
