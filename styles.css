@@ -845,6 +845,34 @@ tbody tr:hover {
   background: #f8fafc;
 }
 
+.detail-classify-details {
+  border: none;
+  background: transparent;
+}
+
+.detail-classify-summary {
+  cursor: pointer;
+  list-style: none;
+  margin: 0;
+}
+
+.detail-classify-summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-classify-summary::before {
+  content: "▸ ";
+  color: var(--muted);
+}
+
+.detail-classify-details[open] > .detail-classify-summary::before {
+  content: "▾ ";
+}
+
+.detail-classify-details > :not(summary) {
+  margin-top: 10px;
+}
+
 .classify-current {
   margin: 0 0 10px;
   font-size: 0.9rem;

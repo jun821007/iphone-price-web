@@ -320,21 +320,12 @@ function splitModelKey(modelKey) {
   return { model, capacity, color };
 }
 
-function usesCompactCategory() {
-  return activeCategory === "new" || activeCategory === "used";
-}
-
 function modelGroupKey(row) {
   return (row.model || splitModelKey(row.model_key).model || row.model_key || "").toLowerCase();
 }
 
 function modelGroupLabel(row) {
   return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
-}
-
-function showPriceTableView() {
-  if (priceTable) priceTable.hidden = false;
-  if (compactPriceList) compactPriceList.hidden = true;
 }
 
 function showCompactPriceView() {
@@ -396,25 +387,15 @@ function renderCompactPriceList(rows) {
 }
 
 function renderPriceView(rows) {
-  if (usesCompactCategory()) {
-    showCompactPriceView();
-    renderCompactPriceList(rows);
-    return;
-  }
-  showPriceTableView();
-  renderTable(rows);
+  showCompactPriceView();
+  renderCompactPriceList(rows);
 }
 
 function setPriceViewMessage(message, type = "muted") {
-  if (usesCompactCategory()) {
-    showCompactPriceView();
-    if (compactPriceList) {
-      compactPriceList.innerHTML = `<div class="compact-empty ${type}">${message}</div>`;
-    }
-    return;
+  showCompactPriceView();
+  if (compactPriceList) {
+    compactPriceList.innerHTML = `<div class="compact-empty ${type}">${message}</div>`;
   }
-  showPriceTableView();
-  tableBody.innerHTML = `<tr><td colspan="9" class="${type}">${message}</td></tr>`;
 }
 
 function renderPriceStats(priceStats) {
@@ -523,6 +504,9 @@ async function openDetailPanel(row) {
   if (!detailModal) return;
   currentDetailRow = row;
   populateClassifyForm(row);
+  const classifyDetails = document.querySelector(".detail-classify-details");
+  if (classifyDetails) classifyDetails.open = false;
+  setClassifyStatus("");
   const label = [row.model || row.model_key, row.capacity, row.color].filter(Boolean).join(" ");
   detailTitle.textContent = label || row.model_key;
   detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${row.trade_side === "buy" ? "買單" : "賣單"} · ${row.model_key}`;

@@ -80,7 +80,8 @@
     <section id="summary" class="summary card"></section>
 
     <section class="card table-wrap">
-      <table>
+      <div id="compactPriceList" class="compact-price-list"></div>
+      <table hidden>
         <thead>
           <tr>
             <th>方向</th>
@@ -96,7 +97,6 @@
         </thead>
         <tbody id="tableBody"><tr><td colspan="9" class="muted">請選擇日期</td></tr></tbody>
       </table>
-      <div id="compactPriceList" class="compact-price-list" hidden></div>
     </section>
   </div>
 
@@ -111,15 +111,17 @@
       </header>
       <div class="detail-stats" id="detailStats"></div>
       <section class="detail-classify card">
-        <h3 class="detail-section-title">分類修正</h3>
-        <p id="classifyCurrent" class="classify-current muted"></p>
-        <div class="pending-bind-grid" id="classifyForm">
-          <label>設備類型<select id="classifyDevice"></select></label>
-          <label>品牌<select id="classifyBrand"></select></label>
-          <label>新舊<select id="classifyCondition"></select></label>
-        </div>
-        <button type="button" id="classifySave" class="btn-primary classify-save">儲存分類</button>
-        <p id="classifyStatus" class="classify-status muted" aria-live="polite"></p>
+        <details class="detail-classify-details">
+          <summary class="detail-section-title detail-classify-summary">分類修正</summary>
+          <p id="classifyCurrent" class="classify-current muted"></p>
+          <div class="pending-bind-grid" id="classifyForm">
+            <label>設備類型<select id="classifyDevice"></select></label>
+            <label>品牌<select id="classifyBrand"></select></label>
+            <label>新舊<select id="classifyCondition"></select></label>
+          </div>
+          <button type="button" id="classifySave" class="btn-primary classify-save">儲存分類</button>
+          <p id="classifyStatus" class="classify-status muted" aria-live="polite"></p>
+        </details>
       </section>
       <div class="detail-chart-wrap">
         <canvas id="priceChart" aria-label="歷史價格走勢"></canvas>
@@ -135,7 +137,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});
