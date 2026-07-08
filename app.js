@@ -70,6 +70,7 @@ const classifyStatus = document.getElementById("classifyStatus");
 
 let supabaseClient = null;
 let allRows = [];
+let dayTopPriceCounts = new Map();
 let activeCategory = "new";
 let activeMarketFilter = "";
 let latestSyncTime = null;
@@ -515,6 +516,10 @@ function showCompactPriceView() {
 function topPriceQuoteCount(row) {
   const top = row.top_price;
   if (top == null) return 0;
+  const tickKey = rowCountKey(row.category, row.model_key, row.trade_side, Number(top));
+  if (dayTopPriceCounts.has(tickKey)) {
+    return dayTopPriceCounts.get(tickKey);
+  }
   const hit = (row.price_stats || []).find((p) => Number(p.price) === Number(top));
   return hit?.count ?? 0;
 }
@@ -777,6 +782,23 @@ function personKeyFromTick(t) {
     || `${t.quoted_at || ""}`;
 }
 
+function rowCountKey(category, modelKey, tradeSide, price) {
+  return `${category}|${(modelKey || "").trim()}|${tradeSide || "sell"}|${price}`;
+}
+
+function rebuildDayTopPriceCounts(ticks) {
+  const byKey = new Map();
+  for (const t of ticks || []) {
+    if (t.price == null) continue;
+    const modelKey = (t.model_key || "").trim();
+    if (!modelKey) continue;
+    const key = rowCountKey(t.category, modelKey, t.trade_side, Number(t.price));
+    if (!byKey.has(key)) byKey.set(key, new Set());
+    byKey.get(key).add(personKeyFromTick(t));
+  }
+  dayTopPriceCounts = new Map([...byKey.entries()].map(([k, people]) => [k, people.size]));
+}
+
 function formatPersonLabel(t) {
   const mid = (t.from_mid || "").trim();
   const midShort = mid ? mid.slice(-8) : "—";
@@ -946,8 +968,10 @@ async function loadDashboard(selectedDate) {
   ] = await Promise.all([
     supabaseClient.from(statsTable).select("*").eq("quote_date", selectedDate).maybeSingle(),
     supabaseClient.from(senderTable).select("from_mid,sender_name,top_chat_name,message_count,quote_count").eq("quote_date", selectedDate).order("quote_count", { ascending: false }).limit(10),
-    supabaseClient.from(ticksTable).select("model_key,from_mid,sender_name").eq("quote_date", selectedDate).limit(10000),
+    supabaseClient.from(ticksTable).select("category,model_key,trade_side,price,from_mid,sender_name").eq("quote_date", selectedDate).limit(10000),
   ]);
+
+  rebuildDayTopPriceCounts(ticksError ? [] : (ticks || []));
 
   if (statsError?.code === "42P01") {
     statMessages.textContent = "—";
