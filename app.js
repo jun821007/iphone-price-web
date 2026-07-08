@@ -718,13 +718,18 @@ async function openDetailPanel(row) {
   destroyCharts();
   detailModal.showModal();
 
+  const selectedDate = dateSelect?.value || "";
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
-  const { data, error } = await supabaseClient
+  let tickQuery = supabaseClient
     .from(ticksTable)
     .select("quoted_at,quote_date,price,discount_zhe,chat_name,sender_name,from_mid")
     .eq("category", row.category)
     .eq("model_key", row.model_key)
-    .eq("trade_side", row.trade_side || "sell")
+    .eq("trade_side", row.trade_side || "sell");
+  if (selectedDate) {
+    tickQuery = tickQuery.eq("quote_date", selectedDate);
+  }
+  const { data, error } = await tickQuery
     .order("quoted_at", { ascending: true })
     .limit(800);
 
@@ -735,7 +740,8 @@ async function openDetailPanel(row) {
 
   const ticks = data || [];
   if (!ticks.length) {
-    detailTicks.textContent = "尚無歷史逐筆資料（需 v6 quote_ticks）";
+    const dayHint = selectedDate ? `${selectedDate} ` : "";
+    detailTicks.textContent = `${dayHint}尚無逐筆報價資料`;
     return;
   }
 
