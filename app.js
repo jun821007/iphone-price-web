@@ -1002,7 +1002,7 @@ async function loadDashboard(selectedDate) {
     statObservations.textContent = stats.total_observations ?? "—";
     statRecords.textContent = stats.total_records ?? "—";
     statQuotes.textContent = stats.total_quotes ?? "—";
-    renderLeaderboards(senders || [], modelRows);
+    renderLeaderboards(mergeSenderQuoteCounts(senders, ticks), modelRows);
   }
 }
 
@@ -1018,6 +1018,29 @@ function buildModelRowsFromTicks(ticks) {
     .map(([model_key, people]) => ({ model_key, total: people.size }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 10);
+}
+
+function buildSenderQuoteCountsFromTicks(ticks) {
+  const bySender = new Map();
+  for (const t of ticks || []) {
+    const mid = (t.from_mid || "").trim();
+    if (!mid) continue;
+    const quoteKey = `${t.category}|${(t.model_key || "").trim()}|${t.trade_side || "sell"}|${t.price}`;
+    if (!bySender.has(mid)) bySender.set(mid, new Set());
+    bySender.get(mid).add(quoteKey);
+  }
+  return new Map([...bySender.entries()].map(([mid, quotes]) => [mid, quotes.size]));
+}
+
+function mergeSenderQuoteCounts(senderRows, ticks) {
+  const counts = buildSenderQuoteCountsFromTicks(ticks);
+  return (senderRows || [])
+    .map((r) => {
+      const mid = (r.from_mid || "").trim();
+      const derived = counts.get(mid);
+      return { ...r, quote_count: derived != null ? derived : (r.quote_count ?? 0) };
+    })
+    .sort((a, b) => (b.quote_count || 0) - (a.quote_count || 0));
 }
 
 function applyFilters() {

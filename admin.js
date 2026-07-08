@@ -660,6 +660,25 @@ async function insertQuoteTick(pendingRow, binding, bindPrice, tradeSide, device
   }, { onConflict: "message_id,category,model_key,price,trade_side" });
 }
 
+async function personAlreadyQuoted(date, category, modelKey, price, tradeSide, fromMid, exceptMessageId) {
+  const mid = (fromMid || "").trim();
+  if (!mid) return false;
+  const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
+  let query = supabaseClient
+    .from(ticksTable)
+    .select("message_id")
+    .eq("quote_date", date)
+    .eq("category", category)
+    .eq("model_key", modelKey)
+    .eq("price", price)
+    .eq("trade_side", tradeSide)
+    .eq("from_mid", mid);
+  if (exceptMessageId != null) query = query.neq("message_id", exceptMessageId);
+  const { data, error } = await query.limit(1);
+  if (error) return false;
+  return (data || []).length > 0;
+}
+
 async function upsertApprovedPrice(date, category, binding, bindPrice, tradeSide, deviceType, brand, condition, pendingRow, now) {
   const { data: existing } = await supabaseClient
     .from(table("SUPABASE_TABLE"))
@@ -670,11 +689,17 @@ async function upsertApprovedPrice(date, category, binding, bindPrice, tradeSide
     .eq("trade_side", tradeSide)
     .maybeSingle();
 
+  // 同一人同規格同價已報過 → 不重複累加次數（僅寫入 tick 供逐筆留存）
+  const alreadyCounted = await personAlreadyQuoted(
+    date, binding.category, binding.model_key, bindPrice, tradeSide,
+    pendingRow?.from_mid, pendingRow?.message_id,
+  );
+
   let priceStats = existing?.price_stats || [];
   const hit = priceStats.find((p) => p.price === bindPrice);
   const discountZhe = formatDiscountZhe(bindPrice, binding.msrp);
   if (hit) {
-    hit.count += 1;
+    if (!alreadyCounted) hit.count += 1;
     if (discountZhe) hit.discount_zhe = discountZhe;
   } else {
     const item = { price: bindPrice, count: 1 };
