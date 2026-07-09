@@ -329,11 +329,17 @@ tbody tr:hover {
   word-break: break-word;
 }
 
+.compact-color,
+.compact-capacity {
+  text-align: center;
+}
+
 .compact-price {
   font-weight: 700;
   color: var(--accent-dark);
   text-align: right;
   white-space: nowrap;
+  justify-self: stretch;
 }
 
 .compact-count {
@@ -349,6 +355,17 @@ tbody tr:hover {
   text-align: right;
   white-space: nowrap;
   font-size: 0.84rem;
+  justify-self: stretch;
+}
+
+.compact-row.compact-header span:nth-child(2),
+.compact-row.compact-header span:nth-child(3) {
+  text-align: center;
+}
+
+.compact-row.compact-header span:nth-child(4),
+.compact-row.compact-header span:nth-child(5) {
+  text-align: right;
 }
 
 .compact-row.row-clickable {
