@@ -71,6 +71,7 @@ const classifyStatus = document.getElementById("classifyStatus");
 let supabaseClient = null;
 let allRows = [];
 let dayTopPriceCounts = new Map();
+let dayLowestDiscountBySpec = new Map();
 let activeCategory = "new";
 let activeMarketFilter = "";
 let latestSyncTime = null;
@@ -513,6 +514,52 @@ function showCompactPriceView() {
   if (compactPriceList) compactPriceList.hidden = false;
 }
 
+function lowestDiscountLabelForRow(row) {
+  const specKey = `${row.category}|${row.model_key}|${row.trade_side || "sell"}`;
+  const zhe = dayLowestDiscountBySpec.get(specKey);
+  if (zhe != null) return formatDiscountValue(zhe);
+  return "—";
+}
+
+function rebuildDayLowestDiscount(ticks, rows) {
+  const msrpBySpec = new Map();
+  for (const r of rows || []) {
+    const key = `${r.category}|${r.model_key}|${r.trade_side || "sell"}`;
+    if (r.msrp) msrpBySpec.set(key, Number(r.msrp));
+  }
+
+  const bySpec = new Map();
+  for (const t of ticks || []) {
+    const modelKey = (t.model_key || "").trim();
+    if (!modelKey) continue;
+    const specKey = `${t.category}|${modelKey}|${t.trade_side || "sell"}`;
+    let zhe = parseDiscountNumber(t.discount_zhe);
+    if (zhe == null && t.price != null) {
+      const msrp = msrpBySpec.get(specKey);
+      if (msrp) zhe = Number(t.price) / msrp * 10;
+    }
+    if (zhe == null) continue;
+    const cur = bySpec.get(specKey);
+    if (cur == null || zhe < cur) bySpec.set(specKey, zhe);
+  }
+
+  for (const r of rows || []) {
+    const specKey = `${r.category}|${r.model_key}|${r.trade_side || "sell"}`;
+    if (bySpec.has(specKey)) continue;
+    const msrp = Number(r.msrp);
+    if (!msrp) continue;
+    for (const p of r.price_stats || []) {
+      let zhe = parseDiscountNumber(p.discount_zhe);
+      if (zhe == null && p.price != null) zhe = Number(p.price) / msrp * 10;
+      if (zhe == null) continue;
+      const cur = bySpec.get(specKey);
+      if (cur == null || zhe < cur) bySpec.set(specKey, zhe);
+    }
+  }
+
+  dayLowestDiscountBySpec = bySpec;
+}
+
 function topPriceQuoteCount(row) {
   const top = row.top_price;
   if (top == null) return 0;
@@ -558,6 +605,7 @@ function renderCompactPriceList(rows) {
         <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
         <span class="compact-price">${formatMaybePrice(row.top_price)}<span class="compact-count">×${topPriceQuoteCount(row)}</span></span>
+        <span class="compact-discount-low">${lowestDiscountLabelForRow(row)}</span>
       </div>`;
     }).join("");
 
@@ -569,7 +617,7 @@ function renderCompactPriceList(rows) {
       </summary>
       <div class="model-group-body">
         <div class="compact-row compact-header">
-          <span>型號</span><span>顏色</span><span>容量</span><span>價格</span>
+          <span>型號</span><span>顏色</span><span>容量</span><span>價格</span><span>最低折</span>
         </div>
         ${rowsHtml}
       </div>
@@ -968,10 +1016,12 @@ async function loadDashboard(selectedDate) {
   ] = await Promise.all([
     supabaseClient.from(statsTable).select("*").eq("quote_date", selectedDate).maybeSingle(),
     supabaseClient.from(senderTable).select("from_mid,sender_name,top_chat_name,message_count,quote_count").eq("quote_date", selectedDate).order("quote_count", { ascending: false }).limit(10),
-    supabaseClient.from(ticksTable).select("category,model_key,trade_side,price,from_mid,sender_name").eq("quote_date", selectedDate).limit(10000),
+    supabaseClient.from(ticksTable).select("category,model_key,trade_side,price,discount_zhe,from_mid,sender_name").eq("quote_date", selectedDate).limit(10000),
   ]);
 
-  rebuildDayTopPriceCounts(ticksError ? [] : (ticks || []));
+  const tickRows = ticksError ? [] : (ticks || []);
+  rebuildDayTopPriceCounts(tickRows);
+  rebuildDayLowestDiscount(tickRows, allRows);
 
   if (statsError?.code === "42P01") {
     statMessages.textContent = "—";
