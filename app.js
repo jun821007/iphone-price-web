@@ -36,9 +36,7 @@ const FALLBACK_BRANDS = [
 ];
 
 const dateSelect = document.getElementById("dateSelect");
-const searchInput = document.getElementById("searchInput");
 const marketFilter = document.getElementById("marketFilter");
-const reloadBtn = document.getElementById("reloadBtn");
 const tableBody = document.getElementById("tableBody");
 const compactPriceList = document.getElementById("compactPriceList");
 const tradeSideToggle = document.getElementById("tradeSideToggle");
@@ -956,7 +954,7 @@ async function openDetailPanel(row) {
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
   let tickQuery = supabaseClient
     .from(ticksTable)
-    .select("quoted_at,quote_date,price,discount_zhe,chat_name,sender_name,from_mid")
+    .select("quoted_at,quote_date,price,discount_zhe,chat_name,sender_name,from_mid,raw_line")
     .eq("category", row.category)
     .eq("model_key", row.model_key)
     .eq("trade_side", row.trade_side || "sell");
@@ -1050,7 +1048,11 @@ function renderPricePeopleList(people) {
     const { who, group } = formatPersonLabel(t);
     const when = formatShortTime(t.quoted_at);
     const meta = [group, when].filter(Boolean).join(" · ");
-    return `<div class="price-person-row"><span class="price-person-name">${who}</span><span class="price-person-meta muted">${meta || "—"}</span></div>`;
+    const line = (t.raw_line || "").trim();
+    const rawHtml = line
+      ? `<div class="demand-raw-line muted">${escapeHtml(line)}</div>`
+      : '<div class="demand-raw-line muted">—</div>';
+    return `<div class="price-person-row"><span class="price-person-name">${escapeHtml(who)}</span><span class="price-person-meta muted">${escapeHtml(meta || "—")}</span>${rawHtml}</div>`;
   }).join("");
   const more = rest > 0 ? `<div class="price-person-more muted">還有 ${rest} 人</div>` : "";
   return rows + more;
@@ -1500,15 +1502,12 @@ function mergeSenderQuoteCounts(senderRows, ticks) {
 }
 
 function applyFilters() {
-  const keyword = searchInput.value.trim().toLowerCase();
   const selectedDate = dateSelect.value;
   const sourceRows = activeTradeSide === "buy" ? allBuyDemandRows : allRows;
   const filtered = sortRowsForView(sourceRows.filter((row) => {
     if (row.category !== activeCategory) return false;
     if (activeTradeSide === "sell" && !rowMatchesMarketFilter(row)) return false;
-    if (!keyword) return true;
-    const haystack = [row.model, row.model_key, row.capacity, row.color, row.chat_name].filter(Boolean).join(" ").toLowerCase();
-    return haystack.includes(keyword);
+    return true;
   }));
   window.filteredRows = filtered;
   renderPriceView(filtered);
@@ -1676,14 +1675,12 @@ if (modelLeaderboard) {
     }
   });
 }
-searchInput.addEventListener("input", applyFilters);
 if (marketFilter) {
   marketFilter.addEventListener("change", () => {
     activeMarketFilter = marketFilter.value;
     applyFilters();
   });
 }
-reloadBtn.addEventListener("click", () => boot());
 
 tableBody.addEventListener("click", (event) => {
   if (event.target.classList.contains("btn-classify")) {

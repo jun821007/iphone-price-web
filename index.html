@@ -65,21 +65,13 @@
       </details>
     </section>
 
-    <section class="card">
-      <details class="collapse-section">
-        <summary class="collapse-summary section-title">日期・搜尋型號</summary>
-        <div class="collapse-body filters">
-          <div class="filter-row">
-            <label for="dateSelect">日期</label>
-            <select id="dateSelect"><option value="">載入中…</option></select>
-          </div>
-          <div class="filter-row grow">
-            <label for="searchInput">搜尋型號</label>
-            <input id="searchInput" type="search" placeholder="例如 17pro、AirPodsPro3" />
-          </div>
-          <button id="reloadBtn" type="button" class="btn-primary">重新載入</button>
+    <section class="card date-bar">
+      <div class="filters date-bar-filters">
+        <div class="filter-row">
+          <label for="dateSelect">日期</label>
+          <select id="dateSelect"><option value="">載入中…</option></select>
         </div>
-      </details>
+      </div>
     </section>
 
     <nav class="tabs" id="categoryTabs" role="tablist">
@@ -149,7 +141,7 @@
     </div>
   </dialog>
 
-  <script src="app.js?v=39"></script>
+  <script src="app.js?v=40"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});
