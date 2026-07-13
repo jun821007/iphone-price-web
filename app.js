@@ -1185,7 +1185,10 @@ function buildSenderRowsFromBuyDemand(ticks) {
     const item = byMid.get(mid);
     if (t.sender_name) item.sender_name = t.sender_name;
     if (t.chat_name) item.top_chat_name = t.chat_name;
-    if (t.message_id != null) item.message_count.add(String(t.message_id));
+    const msgKey = t.message_id != null && t.message_id !== ""
+      ? String(t.message_id)
+      : (t.raw_line || "").trim();
+    if (msgKey) item.message_count.add(msgKey);
     const demandKey = `${t.category}|${(t.model_key || "").trim()}`;
     item.quote_count.add(demandKey);
   }
@@ -1321,7 +1324,7 @@ async function loadBuyDemandForDate(selectedDate) {
   const demandTable = table("SUPABASE_BUY_DEMAND_TABLE");
   const { data, error } = await supabaseClient
     .from(demandTable)
-    .select("quote_date,category,model_key,model,capacity,color,spec_clear,from_mid,sender_name,chat_name,raw_line,quoted_at,intent_keyword")
+    .select("quote_date,category,model_key,model,capacity,color,spec_clear,from_mid,sender_name,chat_name,message_id,raw_line,quoted_at,intent_keyword")
     .eq("quote_date", selectedDate)
     .limit(10000);
   if (error) {
