@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a2744" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="價格走勢" />
+  <title>價格走勢 · 報價查詢</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <div class="page chart-page">
+    <header class="header">
+      <h1 class="chart-page-title">價格走勢</h1>
+      <nav class="header-nav">
+        <a class="admin-link" href="index.html">報價查詢</a>
+        <a class="admin-link" href="admin.html">審計後台</a>
+      </nav>
+    </header>
+
+    <section class="card chart-filters">
+      <nav class="tabs" id="categoryTabs" role="tablist">
+        <button type="button" class="tab active" data-category="new" aria-selected="true">新機</button>
+        <button type="button" class="tab" data-category="used" aria-selected="false">二手</button>
+        <button type="button" class="tab" data-category="accessory" aria-selected="false">配件</button>
+        <button type="button" class="tab" data-category="new_ipad" aria-selected="false">iPad</button>
+      </nav>
+
+      <div class="chart-filter-row">
+        <span class="filter-label">方向</span>
+        <div class="segmented" id="tradeSideToggle" role="group">
+          <button type="button" class="segmented-btn active" data-side="sell">賣單</button>
+          <button type="button" class="segmented-btn" data-side="buy">買單</button>
+        </div>
+      </div>
+
+      <div class="chart-filter-row">
+        <span class="filter-label">時間</span>
+        <div class="segmented" id="rangePresets" role="group">
+          <button type="button" class="segmented-btn active" data-days="7">7日</button>
+          <button type="button" class="segmented-btn" data-days="14">14日</button>
+          <button type="button" class="segmented-btn" data-days="30">30日</button>
+        </div>
+        <div class="chart-date-range">
+          <label>起<input type="date" id="dateStart" /></label>
+          <label>迄<input type="date" id="dateEnd" /></label>
+        </div>
+      </div>
+
+      <div class="chart-filter-row model-filter-head">
+        <span class="filter-label">型號</span>
+        <input id="modelSearch" type="search" class="chart-model-search" placeholder="搜尋型號…" />
+        <button type="button" id="selectAllBtn" class="btn-secondary btn-sm">全選</button>
+        <button type="button" id="clearAllBtn" class="btn-secondary btn-sm">清除</button>
+        <button type="button" id="applyBtn" class="btn-primary btn-sm">繪製圖表</button>
+      </div>
+      <p id="modelHint" class="chart-hint muted">最多同時 10 個型號；全選 = 目前類別 + 搜尋結果</p>
+      <div id="modelPicker" class="chart-model-picker muted">載入型號清單…</div>
+    </section>
+
+    <p id="chartStatus" class="chart-status muted" aria-live="polite"></p>
+
+    <section class="card chart-panel">
+      <h2 class="chart-panel-title">價格 K 線</h2>
+      <p class="chart-panel-desc muted">單選：日 OHLC；多選：收盤價折線</p>
+      <div class="chart-canvas-wrap chart-canvas-wrap--tall">
+        <canvas id="priceChart" aria-label="價格 K 線"></canvas>
+      </div>
+    </section>
+
+    <section class="card chart-panel">
+      <h2 class="chart-panel-title">報價次數 K 線</h2>
+      <p class="chart-panel-desc muted">每日總人次（同人同價只算 1 次）</p>
+      <div class="chart-canvas-wrap chart-canvas-wrap--tall">
+        <canvas id="countChart" aria-label="報價次數 K 線"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
+  <script src="chart.js?v=1"></script>
+</body>
+</html>

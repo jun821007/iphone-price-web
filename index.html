@@ -19,7 +19,10 @@
   <div class="page">
     <header class="header">
       <p id="lastUpdated" class="last-updated">最後同步：—</p>
-      <a class="admin-link" href="admin.html">審計後台</a>
+      <nav class="header-nav">
+        <a class="admin-link" href="chart.html">價格走勢</a>
+        <a class="admin-link" href="admin.html">審計後台</a>
+      </nav>
     </header>
 
     <section id="dashboard" class="dashboard card">
@@ -130,17 +133,13 @@
         <h3 class="detail-section-title">當日報價統計次數（同一人不累加）</h3>
         <div id="detailTicks" class="detail-ticks muted">載入中…</div>
       </div>
-      <div class="detail-chart-wrap">
-        <canvas id="priceChart" aria-label="歷史價格走勢"></canvas>
-      </div>
-      <div class="detail-chart-wrap">
-        <canvas id="discountChart" aria-label="歷史折數走勢"></canvas>
-      </div>
+      <p class="detail-chart-link-wrap">
+        <a id="detailChartLink" class="admin-link" href="chart.html">在價格走勢頁查看此型號 →</a>
+      </p>
     </div>
   </dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script src="app.js?v=28"></script>
+  <script src="app.js?v=29"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});

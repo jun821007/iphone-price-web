@@ -57,8 +57,7 @@ const detailSubtitle = document.getElementById("detailSubtitle");
 const detailStats = document.getElementById("detailStats");
 const detailTicks = document.getElementById("detailTicks");
 const detailClose = document.getElementById("detailClose");
-const priceChartCanvas = document.getElementById("priceChart");
-const discountChartCanvas = document.getElementById("discountChart");
+const detailChartLink = document.getElementById("detailChartLink");
 const classifyCurrent = document.getElementById("classifyCurrent");
 const classifyBaseModel = document.getElementById("classifyBaseModel");
 const classifyCapacity = document.getElementById("classifyCapacity");
@@ -75,8 +74,6 @@ let dayLowestDiscountBySpec = new Map();
 let activeCategory = "new";
 let activeMarketFilter = "";
 let latestSyncTime = null;
-let priceChart = null;
-let discountChart = null;
 let currentDetailRow = null;
 let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
@@ -679,76 +676,14 @@ function formatDiscountLabel(text) {
   return formatDiscountValue(num);
 }
 
-function destroyCharts() {
-  if (priceChart) {
-    priceChart.destroy();
-    priceChart = null;
-  }
-  if (discountChart) {
-    discountChart.destroy();
-    discountChart = null;
-  }
-}
-
-function buildHighLowChart(ctx, labels, highs, lows, colors, yTickFormatter) {
-  return new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "最高",
-          data: highs,
-          borderColor: colors.high,
-          backgroundColor: `${colors.high}22`,
-          tension: 0.2,
-          pointRadius: 3,
-          fill: false,
-        },
-        {
-          label: "最低",
-          data: lows,
-          borderColor: colors.low,
-          backgroundColor: `${colors.low}22`,
-          tension: 0.2,
-          pointRadius: 3,
-          fill: false,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: true, position: "top" } },
-      scales: {
-        y: {
-          ticks: {
-            callback: (value) => (yTickFormatter ? yTickFormatter(value) : value),
-          },
-        },
-      },
-    },
+function updateDetailChartLink(row) {
+  if (!detailChartLink || !row) return;
+  const params = new URLSearchParams({
+    category: row.category || "new",
+    trade_side: row.trade_side || "sell",
+    model_key: row.model_key || "",
   });
-}
-
-function aggregateDaily(ticks) {
-  const byDay = new Map();
-  for (const t of ticks) {
-    const day = String(t.quote_date || t.quoted_at || "").slice(0, 10);
-    if (!day || t.price == null) continue;
-    const bucket = byDay.get(day) || { high: -Infinity, low: Infinity, discountHigh: null, discountLow: null };
-    bucket.high = Math.max(bucket.high, t.price);
-    bucket.low = Math.min(bucket.low, t.price);
-    const zhe = parseDiscountNumber(t.discount_zhe);
-    if (zhe != null) {
-      const rounded = Math.round(zhe * 100) / 100;
-      bucket.discountHigh = bucket.discountHigh == null ? rounded : Math.max(bucket.discountHigh, rounded);
-      bucket.discountLow = bucket.discountLow == null ? rounded : Math.min(bucket.discountLow, rounded);
-    }
-    byDay.set(day, bucket);
-  }
-  const days = [...byDay.keys()].sort();
-  return days.map((day) => ({ day, ...byDay.get(day) }));
+  detailChartLink.href = `chart.html?${params.toString()}`;
 }
 
 async function openDetailPanel(row) {
@@ -768,7 +703,7 @@ async function openDetailPanel(row) {
     <div class="detail-stat"><span class="muted">目前折數</span><strong>${formatDiscountLabel(row.top_discount_zhe)}</strong></div>
   `;
   detailTicks.textContent = "載入中…";
-  destroyCharts();
+  updateDetailChartLink(row);
   detailModal.showModal();
 
   const selectedDate = dateSelect?.value || "";
@@ -793,30 +728,8 @@ async function openDetailPanel(row) {
 
   const ticks = data || [];
   if (!ticks.length) {
-    const dayHint = selectedDate ? `${selectedDate} ` : "";
-    detailTicks.textContent = `${dayHint}尚無逐筆報價資料`;
+    detailTicks.textContent = `${selectedDate} 尚無逐筆報價資料`;
     return;
-  }
-
-  const daily = aggregateDaily(ticks);
-  const labels = daily.map((d) => d.day.slice(5));
-  const highs = daily.map((d) => d.high);
-  const lows = daily.map((d) => d.low);
-
-  priceChart = buildHighLowChart(
-    priceChartCanvas, labels, highs, lows,
-    { high: "#dc2626", low: "#2563eb" },
-    (v) => formatPrice(v),
-  );
-
-  const discountHighs = daily.map((d) => d.discountHigh);
-  const discountLows = daily.map((d) => d.discountLow);
-  if (discountHighs.some((v) => v != null)) {
-    discountChart = buildHighLowChart(
-      discountChartCanvas, labels, discountHighs, discountLows,
-      { high: "#dc2626", low: "#047857" },
-      (v) => formatDiscountValue(v),
-    );
   }
 
   detailTicks.innerHTML = renderPriceCountStats(ticks);
@@ -1254,7 +1167,6 @@ tableBody.addEventListener("keydown", (event) => {
 
 if (detailClose) {
   detailClose.addEventListener("click", () => {
-    destroyCharts();
     currentDetailRow = null;
     detailModal.close();
   });
@@ -1262,7 +1174,6 @@ if (detailClose) {
 if (detailModal) {
   detailModal.addEventListener("click", (event) => {
     if (event.target === detailModal) {
-      destroyCharts();
       currentDetailRow = null;
       detailModal.close();
     }
