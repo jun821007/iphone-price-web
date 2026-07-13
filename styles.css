@@ -1330,9 +1330,83 @@ tbody tr:hover {
 .trade-side-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 14px;
+  padding: 14px 16px;
   margin-bottom: 12px;
+}
+
+.trade-side-bar .filter-label {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 2.5em;
+}
+
+.trade-side-segmented {
+  position: relative;
+  display: flex;
+  flex: 1;
+  max-width: 420px;
+  background: #eef2f7;
+  border: none;
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
+  overflow: visible;
+}
+
+.trade-side-segmented::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.trade-side-segmented[data-active="buy"]::before {
+  transform: translateX(100%);
+}
+
+.trade-side-segmented .segmented-btn {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 11px 14px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.2s ease, font-weight 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.trade-side-segmented .segmented-btn:hover:not(.active) {
+  color: #334155;
+}
+
+.trade-side-segmented .segmented-btn.active[data-side="sell"] {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.trade-side-segmented .segmented-btn.active[data-side="buy"] {
+  color: #047857;
+  font-weight: 700;
+}
+
+.trade-side-segmented .segmented-btn:active {
+  transform: scale(0.98);
+}
+
+body.mode-buy-demand .trade-side-bar {
+  background: linear-gradient(135deg, #f8fafc 0%, #f0fdf4 100%);
 }
 
 .spec-unclear-tag {

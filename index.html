@@ -27,9 +27,9 @@
 
     <div class="trade-side-bar card">
       <span class="filter-label">方向</span>
-      <div class="segmented" id="tradeSideToggle" role="group">
-        <button type="button" class="segmented-btn active" data-side="sell">賣單</button>
-        <button type="button" class="segmented-btn" data-side="buy">買單（徵收熱度）</button>
+      <div class="segmented trade-side-segmented" id="tradeSideToggle" role="tablist" data-active="sell" aria-label="賣單或買單徵收">
+        <button type="button" class="segmented-btn active" data-side="sell" role="tab" aria-selected="true">賣單</button>
+        <button type="button" class="segmented-btn" data-side="buy" role="tab" aria-selected="false">買單（徵收熱度）</button>
       </div>
     </div>
 
@@ -49,7 +49,7 @@
 
     <section class="card">
       <details class="collapse-section">
-        <summary class="collapse-summary section-title">情報來源排行（跨群累計）</summary>
+        <summary class="collapse-summary section-title" id="senderLeaderboardSummary">情報來源排行（賣單報價 · 跨群累計）</summary>
         <div class="collapse-body">
           <ol id="senderLeaderboard" class="rank-list"></ol>
         </div>
@@ -147,7 +147,7 @@
     </div>
   </dialog>
 
-  <script src="app.js?v=31"></script>
+  <script src="app.js?v=32"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});

@@ -51,6 +51,7 @@ const statObservations = document.getElementById("statObservations");
 const statRecords = document.getElementById("statRecords");
 const statQuotes = document.getElementById("statQuotes");
 const senderLeaderboard = document.getElementById("senderLeaderboard");
+const senderLeaderboardSummary = document.getElementById("senderLeaderboardSummary");
 const modelLeaderboard = document.getElementById("modelLeaderboard");
 const modelLeaderboardSummary = document.getElementById("modelLeaderboardSummary");
 const detailModal = document.getElementById("detailModal");
@@ -1059,6 +1060,12 @@ function senderRankTitle(row) {
   return parts.join(" · ");
 }
 
+function updateSenderLeaderboardHeading() {
+  if (!senderLeaderboardSummary) return;
+  const side = activeTradeSide === "buy" ? "買單徵收" : "賣單報價";
+  senderLeaderboardSummary.textContent = `情報來源排行（${side} · 跨群累計）`;
+}
+
 function updateModelLeaderboardHeading() {
   if (!modelLeaderboardSummary) return;
   const side = activeTradeSide === "buy" ? "買單徵收" : "賣單報價";
@@ -1066,13 +1073,15 @@ function updateModelLeaderboardHeading() {
 }
 
 function renderLeaderboards(senderRows, modelRows) {
+  updateSenderLeaderboardHeading();
   updateModelLeaderboardHeading();
   const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
+  const countLabel = activeTradeSide === "buy" ? "徵收" : "報價";
 
   senderLeaderboard.innerHTML = senderRows.length
     ? senderRows.map((r) => {
       const { who } = formatSenderDisplay(r);
-      return `<li><span class="rank-name" title="${senderRankTitle(r)}">${who}</span><span class="rank-meta">訊息 ${r.message_count} · 報價 ${r.quote_count}</span></li>`;
+      return `<li><span class="rank-name" title="${senderRankTitle(r)}">${who}</span><span class="rank-meta">訊息 ${r.message_count} · ${countLabel} ${r.quote_count}</span></li>`;
     }).join("")
     : '<li class="muted">尚無資料（需執行 migration + 重跑腳本）</li>';
 
@@ -1134,19 +1143,62 @@ async function loadDashboard(selectedDate) {
     statObservations.textContent = "—";
     statRecords.textContent = "—";
     statQuotes.textContent = "—";
-    senderLeaderboard.innerHTML = '<li class="muted">尚無同步紀錄（手機 run.py / config.py 需 v2 版，跑完應寫入 daily_run_stats）</li>';
-    updateModelLeaderboardHeading();
-    const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
-    modelLeaderboard.innerHTML = modelRows.length
-      ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} ${peopleLabel}</span></li>`).join("")
-      : '<li class="muted">尚無資料</li>';
+    const senderRows = isBuy
+      ? buildSenderRowsFromBuyDemand(buyDemandTicks)
+      : [];
+    if (isBuy) {
+      renderLeaderboards(senderRows, modelRows);
+    } else {
+      senderLeaderboard.innerHTML = '<li class="muted">尚無同步紀錄（手機 run.py / config.py 需 v2 版，跑完應寫入 daily_run_stats）</li>';
+      updateModelLeaderboardHeading();
+      const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
+      modelLeaderboard.innerHTML = modelRows.length
+        ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} ${peopleLabel}</span></li>`).join("")
+        : '<li class="muted">尚無資料</li>';
+    }
   } else {
     statMessages.textContent = stats.total_messages ?? "—";
     statObservations.textContent = stats.total_observations ?? "—";
     statRecords.textContent = stats.total_records ?? "—";
     statQuotes.textContent = stats.total_quotes ?? "—";
-    renderLeaderboards(mergeSenderQuoteCounts(senders, isBuy ? [] : tickRows), modelRows);
+    const senderRows = isBuy
+      ? buildSenderRowsFromBuyDemand(buyDemandTicks)
+      : mergeSenderQuoteCounts(senders, tickRows);
+    renderLeaderboards(senderRows, modelRows);
   }
+}
+
+function buildSenderRowsFromBuyDemand(ticks) {
+  const byMid = new Map();
+  for (const t of ticks || []) {
+    const mid = (t.from_mid || "").trim();
+    if (!mid) continue;
+    if (!byMid.has(mid)) {
+      byMid.set(mid, {
+        from_mid: mid,
+        sender_name: "",
+        top_chat_name: "",
+        message_count: new Set(),
+        quote_count: new Set(),
+      });
+    }
+    const item = byMid.get(mid);
+    if (t.sender_name) item.sender_name = t.sender_name;
+    if (t.chat_name) item.top_chat_name = t.chat_name;
+    if (t.message_id != null) item.message_count.add(String(t.message_id));
+    const demandKey = `${t.category}|${(t.model_key || "").trim()}`;
+    item.quote_count.add(demandKey);
+  }
+  return [...byMid.values()]
+    .map((item) => ({
+      from_mid: item.from_mid,
+      sender_name: item.sender_name,
+      top_chat_name: item.top_chat_name,
+      message_count: item.message_count.size,
+      quote_count: item.quote_count.size,
+    }))
+    .sort((a, b) => (b.quote_count || 0) - (a.quote_count || 0) || (b.message_count || 0) - (a.message_count || 0))
+    .slice(0, 10);
 }
 
 function buildModelRowsFromBuyDemand(ticks) {
@@ -1220,8 +1272,11 @@ function applyFilters() {
 function setActiveTradeSide(side) {
   activeTradeSide = side === "buy" ? "buy" : "sell";
   if (tradeSideToggle) {
+    tradeSideToggle.dataset.active = activeTradeSide;
     tradeSideToggle.querySelectorAll(".segmented-btn").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.side === activeTradeSide);
+      const on = btn.dataset.side === activeTradeSide;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
     });
   }
   document.body.classList.toggle("mode-buy-demand", activeTradeSide === "buy");
