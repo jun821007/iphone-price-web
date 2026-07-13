@@ -83,6 +83,7 @@ let buyDemandTicks = [];
 let latestSyncTime = null;
 let currentDetailRow = null;
 let currentSenderLeaderboardRows = [];
+let currentModelLeaderboardRows = [];
 let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
 let catalogByCategory = {};
@@ -1089,6 +1090,41 @@ function groupSenderMessages(rows) {
   return [...grouped.values()];
 }
 
+function renderGroupedMessagesHtml(messages, isBuy) {
+  return messages.map((items) => {
+    const first = items[0];
+    const { who } = formatPersonLabel(first);
+    const meta = [who, first.chat_name, formatShortTime(first.quoted_at)].filter(Boolean).map(escapeHtml).join(" · ");
+    if (isBuy) {
+      const rawLines = [...new Set(items.map((item) => (item.raw_line || "").trim()).filter(Boolean))];
+      const models = [...new Set(items.map((item) => item.model_key).filter(Boolean))];
+      const content = rawLines.length ? rawLines : models;
+      return `<div class="detail-tick-row sender-message-row"><span class="muted">${meta}</span>${content.map((line) => `<div class="sender-message-line">${escapeHtml(line)}</div>`).join("")}</div>`;
+    }
+    const saleLines = items.map((item) => {
+      const spec = [item.model || item.model_key, item.capacity, item.color].filter(Boolean).join(" ");
+      return `${spec || item.model_key || "未辨識型號"}${item.price != null ? `　$${formatPrice(item.price)}` : ""}`;
+    });
+    return `<div class="detail-tick-row sender-message-row"><span class="muted">${meta}</span>${saleLines.map((line) => `<div class="sender-message-line">${escapeHtml(line)}</div>`).join("")}</div>`;
+  }).join("");
+}
+
+async function loadTradeMessages({ isBuy, selectedDate, fromMid, modelKey, category }) {
+  const sourceTable = isBuy
+    ? table("SUPABASE_BUY_DEMAND_TABLE")
+    : (table("SUPABASE_TICKS_TABLE") || "quote_ticks");
+  const columns = isBuy
+    ? "quoted_at,message_id,chat_name,sender_name,from_mid,raw_line,intent_keyword,category,model_key,model,capacity,color,spec_clear"
+    : "quoted_at,message_id,chat_name,sender_name,from_mid,category,model_key,model,capacity,color,price,trade_side";
+  let query = supabaseClient.from(sourceTable).select(columns);
+  if (selectedDate) query = query.eq("quote_date", selectedDate);
+  if (!isBuy) query = query.eq("trade_side", "sell");
+  if (fromMid) query = query.eq("from_mid", fromMid);
+  if (modelKey) query = query.eq("model_key", modelKey);
+  if (category) query = query.eq("category", category);
+  return query.order("quoted_at", { ascending: false }).limit(800);
+}
+
 async function openSenderDetail(row) {
   if (!detailModal || !row?.from_mid) return;
   const isBuy = activeTradeSide === "buy";
@@ -1107,19 +1143,11 @@ async function openSenderDetail(row) {
   detailTicks.textContent = "載入中…";
   detailModal.showModal();
 
-  const sourceTable = isBuy
-    ? table("SUPABASE_BUY_DEMAND_TABLE")
-    : (table("SUPABASE_TICKS_TABLE") || "quote_ticks");
-  const columns = isBuy
-    ? "quoted_at,message_id,chat_name,sender_name,from_mid,raw_line,intent_keyword,category,model_key,model,capacity,color,spec_clear"
-    : "quoted_at,message_id,chat_name,sender_name,from_mid,category,model_key,model,capacity,color,price,trade_side";
-  let query = supabaseClient
-    .from(sourceTable)
-    .select(columns)
-    .eq("from_mid", row.from_mid);
-  if (selectedDate) query = query.eq("quote_date", selectedDate);
-  if (!isBuy) query = query.eq("trade_side", "sell");
-  const { data, error } = await query.order("quoted_at", { ascending: false }).limit(800);
+  const { data, error } = await loadTradeMessages({
+    isBuy,
+    selectedDate,
+    fromMid: row.from_mid,
+  });
   if (error) {
     detailTicks.innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
     return;
@@ -1130,21 +1158,52 @@ async function openSenderDetail(row) {
     detailTicks.textContent = `${selectedDate} 尚無${isBuy ? "徵收" : "賣貨"}訊息`;
     return;
   }
-  detailTicks.innerHTML = messages.map((items) => {
-    const first = items[0];
-    const meta = [first.chat_name, formatShortTime(first.quoted_at)].filter(Boolean).map(escapeHtml).join(" · ");
-    if (isBuy) {
-      const rawLines = [...new Set(items.map((item) => (item.raw_line || "").trim()).filter(Boolean))];
-      const models = [...new Set(items.map((item) => item.model_key).filter(Boolean))];
-      const content = rawLines.length ? rawLines : models;
-      return `<div class="detail-tick-row sender-message-row"><span class="muted">${meta}</span>${content.map((line) => `<div class="sender-message-line">${escapeHtml(line)}</div>`).join("")}</div>`;
-    }
-    const saleLines = items.map((item) => {
-      const spec = [item.model || item.model_key, item.capacity, item.color].filter(Boolean).join(" ");
-      return `${spec || item.model_key || "未辨識型號"}${item.price != null ? `　$${formatPrice(item.price)}` : ""}`;
+  detailTicks.innerHTML = renderGroupedMessagesHtml(messages, isBuy);
+}
+
+async function openModelDetail(row) {
+  if (!detailModal || !row?.model_key) return;
+  const isBuy = activeTradeSide === "buy";
+  const selectedDate = dateSelect?.value || "";
+  const categoryLabel = CATEGORY_LABELS[row.category] || row.category || "";
+  currentDetailRow = null;
+  document.querySelector(".detail-classify")?.setAttribute("hidden", "");
+  detailChartLink?.closest(".detail-chart-link-wrap")?.removeAttribute("hidden");
+  if (detailChartLink) {
+    const params = new URLSearchParams({
+      category: row.category || "new",
+      trade_side: isBuy ? "buy" : "sell",
+      model_key: row.model_key,
     });
-    return `<div class="detail-tick-row sender-message-row"><span class="muted">${meta}</span>${saleLines.map((line) => `<div class="sender-message-line">${escapeHtml(line)}</div>`).join("")}</div>`;
-  }).join("");
+    detailChartLink.href = `chart.html?${params.toString()}`;
+    detailChartLink.textContent = isBuy ? "在走勢頁查看此型號徵收熱度 →" : "在價格走勢頁查看此型號 →";
+  }
+  detailTitle.textContent = row.model_key;
+  detailSubtitle.textContent = [selectedDate, isBuy ? "買單徵收訊息" : "賣貨報價訊息", categoryLabel].filter(Boolean).join(" · ");
+  detailStats.innerHTML = `
+    <div class="detail-stat"><span class="muted">${isBuy ? "徵收人數" : "報價人數"}</span><strong>${row.total ?? 0}</strong></div>
+  `;
+  if (detailTicksTitle) detailTicksTitle.textContent = isBuy ? "當日徵收訊息" : "當日賣貨報價";
+  detailTicks.textContent = "載入中…";
+  detailModal.showModal();
+
+  const { data, error } = await loadTradeMessages({
+    isBuy,
+    selectedDate,
+    modelKey: row.model_key,
+    category: row.category,
+  });
+  if (error) {
+    detailTicks.innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
+    return;
+  }
+
+  const messages = groupSenderMessages(data || []);
+  if (!messages.length) {
+    detailTicks.textContent = `${selectedDate} 尚無${isBuy ? "徵收" : "賣貨"}訊息`;
+    return;
+  }
+  detailTicks.innerHTML = renderGroupedMessagesHtml(messages, isBuy);
 }
 
 function updateSenderLeaderboardHeading() {
@@ -1165,16 +1224,19 @@ function renderLeaderboards(senderRows, modelRows) {
   const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
   const countLabel = activeTradeSide === "buy" ? "徵收" : "報價";
 
-  currentSenderLeaderboardRows = senderRows;
-  senderLeaderboard.innerHTML = senderRows.length
-    ? senderRows.map((r, index) => {
-      const { who } = formatSenderDisplay(r);
-      return `<li><button type="button" class="rank-name rank-name-button" data-sender-index="${index}" title="${escapeHtml(senderRankTitle(r))}">${escapeHtml(who)}</button><span class="rank-meta">訊息 ${r.message_count} · ${countLabel} ${r.quote_count}</span></li>`;
-    }).join("")
-    : '<li class="muted">尚無資料（需執行 migration + 重跑腳本）</li>';
+  if (senderRows !== null) {
+    currentSenderLeaderboardRows = senderRows;
+    senderLeaderboard.innerHTML = senderRows.length
+      ? senderRows.map((r, index) => {
+        const { who } = formatSenderDisplay(r);
+        return `<li><button type="button" class="rank-name rank-name-button" data-sender-index="${index}" title="${escapeHtml(senderRankTitle(r))}">${escapeHtml(who)}</button><span class="rank-meta">訊息 ${r.message_count} · ${countLabel} ${r.quote_count}</span></li>`;
+      }).join("")
+      : '<li class="muted">尚無資料（需執行 migration + 重跑腳本）</li>';
+  }
 
+  currentModelLeaderboardRows = modelRows;
   modelLeaderboard.innerHTML = modelRows.length
-    ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} ${peopleLabel}</span></li>`).join("")
+    ? modelRows.map((r, index) => `<li><button type="button" class="rank-name rank-name-button" data-model-index="${index}" title="${escapeHtml(r.model_key)}">${escapeHtml(r.model_key)}</button><span class="rank-meta">${r.total} ${peopleLabel}</span></li>`).join("")
     : '<li class="muted">尚無資料</li>';
 }
 
@@ -1238,11 +1300,8 @@ async function loadDashboard(selectedDate) {
       renderLeaderboards(senderRows, modelRows);
     } else {
       senderLeaderboard.innerHTML = '<li class="muted">尚無同步紀錄（手機 run.py / config.py 需 v2 版，跑完應寫入 daily_run_stats）</li>';
-      updateModelLeaderboardHeading();
-      const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
-      modelLeaderboard.innerHTML = modelRows.length
-        ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} ${peopleLabel}</span></li>`).join("")
-        : '<li class="muted">尚無資料</li>';
+      currentSenderLeaderboardRows = [];
+      renderLeaderboards(null, modelRows);
     }
   } else {
     statMessages.textContent = stats.total_messages ?? "—";
@@ -1297,11 +1356,15 @@ function buildModelRowsFromBuyDemand(ticks) {
   for (const t of ticks || []) {
     const modelKey = (t.model_key || "").trim();
     if (!modelKey) continue;
-    if (!byModel.has(modelKey)) byModel.set(modelKey, new Set());
-    byModel.get(modelKey).add(personKeyFromTick(t));
+    if (!byModel.has(modelKey)) {
+      byModel.set(modelKey, { people: new Set(), category: t.category || "new" });
+    }
+    const item = byModel.get(modelKey);
+    item.people.add(personKeyFromTick(t));
+    if (t.category) item.category = t.category;
   }
   return [...byModel.entries()]
-    .map(([model_key, people]) => ({ model_key, total: people.size }))
+    .map(([model_key, item]) => ({ model_key, category: item.category, total: item.people.size }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 10);
 }
@@ -1311,11 +1374,15 @@ function buildModelRowsFromTicks(ticks) {
   for (const t of ticks || []) {
     const modelKey = (t.model_key || "").trim();
     if (!modelKey) continue;
-    if (!byModel.has(modelKey)) byModel.set(modelKey, new Set());
-    byModel.get(modelKey).add(personKeyFromTick(t));
+    if (!byModel.has(modelKey)) {
+      byModel.set(modelKey, { people: new Set(), category: t.category || "new" });
+    }
+    const item = byModel.get(modelKey);
+    item.people.add(personKeyFromTick(t));
+    if (t.category) item.category = t.category;
   }
   return [...byModel.entries()]
-    .map(([model_key, people]) => ({ model_key, total: people.size }))
+    .map(([model_key, item]) => ({ model_key, category: item.category, total: item.people.size }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 10);
 }
@@ -1498,11 +1565,23 @@ if (tradeSideToggle) {
 }
 if (senderLeaderboard) {
   senderLeaderboard.addEventListener("click", (event) => {
-    const button = event.target.closest(".rank-name-button");
+    const button = event.target.closest(".rank-name-button[data-sender-index]");
     if (!button) return;
     const row = currentSenderLeaderboardRows[Number(button.dataset.senderIndex)];
     if (row) {
       openSenderDetail(row).catch((error) => {
+        detailTicks.innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
+      });
+    }
+  });
+}
+if (modelLeaderboard) {
+  modelLeaderboard.addEventListener("click", (event) => {
+    const button = event.target.closest(".rank-name-button[data-model-index]");
+    if (!button) return;
+    const row = currentModelLeaderboardRows[Number(button.dataset.modelIndex)];
+    if (row) {
+      openModelDetail(row).catch((error) => {
         detailTicks.innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
       });
     }
