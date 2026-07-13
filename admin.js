@@ -23,6 +23,7 @@ const CATEGORY_OPTIONS = [
   { value: "new", label: "新機" },
   { value: "used", label: "二手" },
   { value: "new_ipad", label: "iPad" },
+  { value: "mac", label: "Mac" },
   { value: "android", label: "Android" },
   { value: "accessory", label: "配件" },
 ];
@@ -248,6 +249,7 @@ function classifySpec(category, modelKey) {
 function suggestCategory(deviceType, condition) {
   if (condition === "used") return "used";
   if (deviceType === "tablet") return "new_ipad";
+  if (deviceType === "computer") return "mac";
   if (deviceType === "accessory" || deviceType === "wearable") return "accessory";
   return "new";
 }

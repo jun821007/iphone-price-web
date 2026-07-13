@@ -1,4 +1,4 @@
-const CATEGORY_LABELS = { new: "新機", new_ipad: "iPad", android: "Android", accessory: "配件", used: "二手" };
+const CATEGORY_LABELS = { new: "新機", new_ipad: "iPad", mac: "Mac", android: "Android", accessory: "配件", used: "二手" };
 const MARKET_LABELS = {
   "": "全部",
   new: "全新",
@@ -152,6 +152,7 @@ function inferCondition(row) {
 function inferDeviceType(row) {
   if (row.device_type) return row.device_type;
   if (row.category === "new_ipad") return "tablet";
+  if (row.category === "mac") return "computer";
   if (row.category === "android") return "phone";
   if (row.category === "accessory") return "accessory";
   if (row.category === "used") {
@@ -497,7 +498,14 @@ function tradeSideTag(side) {
   return '<span class="side-tag side-sell">賣單</span>';
 }
 
-const MODEL_COLOR_RE = /(黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|星光|午夜)$/;
+const MODEL_COLOR_RE = /(太空黑|太空灰|天藍|淺綠|薄荷綠|海藍|珊瑚紅|鈦灰|鈦黑|鈦銀|鈦藍|鈦金|鈦白|星光|午夜|薄荷|黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰)$/;
+
+const CAPACITY_ORDER = { "64": 0, "128": 1, "256": 2, "512": 3, "1T": 4, "2T": 5 };
+
+function capacityRank(cap) {
+  const key = String(cap || "").toUpperCase().replace("TB", "T");
+  return CAPACITY_ORDER[key] ?? 99;
+}
 
 function splitModelKey(modelKey) {
   const key = (modelKey || "").trim();
@@ -582,7 +590,12 @@ function renderBuyDemandList(rows) {
   });
 
   compactPriceList.innerHTML = sortedGroups.map(([, group]) => {
-    const rowsHtml = group.rows.map((row) => {
+    const groupRows = [...group.rows].sort((a, b) => {
+      const cap = capacityRank(a.capacity) - capacityRank(b.capacity);
+      if (cap) return cap;
+      return String(a.color || "").localeCompare(String(b.color || ""), "zh-Hant");
+    });
+    const rowsHtml = groupRows.map((row) => {
       const index = rows.indexOf(row);
       const modelLabel = row.model || group.label;
       const specBadge = row.spec_clear
@@ -697,7 +710,7 @@ function renderCompactPriceList(rows) {
   const sortedGroups = [...groups.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label, "zh-Hant"));
   compactPriceList.innerHTML = sortedGroups.map(([, group]) => {
     const sortedRows = [...group.rows].sort((a, b) => {
-      const cap = String(a.capacity || "").localeCompare(String(b.capacity || ""), undefined, { numeric: true });
+      const cap = capacityRank(a.capacity) - capacityRank(b.capacity);
       if (cap) return cap;
       const color = String(a.color || "").localeCompare(String(b.color || ""), "zh-Hant");
       if (color) return color;
