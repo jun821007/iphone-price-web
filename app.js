@@ -59,6 +59,7 @@ const detailTitle = document.getElementById("detailTitle");
 const detailSubtitle = document.getElementById("detailSubtitle");
 const detailStats = document.getElementById("detailStats");
 const detailTicks = document.getElementById("detailTicks");
+const detailTicksTitle = document.getElementById("detailTicksTitle");
 const detailClose = document.getElementById("detailClose");
 const detailChartLink = document.getElementById("detailChartLink");
 const classifyCurrent = document.getElementById("classifyCurrent");
@@ -81,6 +82,7 @@ let allBuyDemandRows = [];
 let buyDemandTicks = [];
 let latestSyncTime = null;
 let currentDetailRow = null;
+let currentSenderLeaderboardRows = [];
 let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
 let catalogByCategory = {};
@@ -801,6 +803,11 @@ async function openDetailPanel(row) {
   const isBuy = row.trade_side === "buy" || activeTradeSide === "buy";
   await loadModelCatalog();
   currentDetailRow = row;
+  document.querySelector(".detail-classify")?.removeAttribute("hidden");
+  detailChartLink?.closest(".detail-chart-link-wrap")?.removeAttribute("hidden");
+  if (detailTicksTitle) {
+    detailTicksTitle.textContent = isBuy ? "當日徵收紀錄" : "當日報價統計次數（同一人不累加）";
+  }
   if (!isBuy) {
     populateClassifyForm(row);
   }
@@ -1060,6 +1067,86 @@ function senderRankTitle(row) {
   return parts.join(" · ");
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
+function groupSenderMessages(rows) {
+  const grouped = new Map();
+  for (const row of rows || []) {
+    const key = row.message_id != null && row.message_id !== ""
+      ? String(row.message_id)
+      : `${row.quoted_at || ""}|${row.raw_line || ""}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  }
+  return [...grouped.values()];
+}
+
+async function openSenderDetail(row) {
+  if (!detailModal || !row?.from_mid) return;
+  const isBuy = activeTradeSide === "buy";
+  const selectedDate = dateSelect?.value || "";
+  const { who, group } = formatSenderDisplay(row);
+  currentDetailRow = null;
+  document.querySelector(".detail-classify")?.setAttribute("hidden", "");
+  detailChartLink?.closest(".detail-chart-link-wrap")?.setAttribute("hidden", "");
+  detailTitle.textContent = who;
+  detailSubtitle.textContent = [selectedDate, isBuy ? "買單徵收訊息" : "賣貨報價訊息", group].filter(Boolean).join(" · ");
+  detailStats.innerHTML = `
+    <div class="detail-stat"><span class="muted">訊息數</span><strong>${row.message_count ?? 0}</strong></div>
+    <div class="detail-stat"><span class="muted">${isBuy ? "徵收規格" : "報價規格"}</span><strong>${row.quote_count ?? 0}</strong></div>
+  `;
+  if (detailTicksTitle) detailTicksTitle.textContent = isBuy ? "當日徵收訊息" : "當日賣貨報價";
+  detailTicks.textContent = "載入中…";
+  detailModal.showModal();
+
+  const sourceTable = isBuy
+    ? table("SUPABASE_BUY_DEMAND_TABLE")
+    : (table("SUPABASE_TICKS_TABLE") || "quote_ticks");
+  const columns = isBuy
+    ? "quoted_at,message_id,chat_name,sender_name,from_mid,raw_line,intent_keyword,category,model_key,model,capacity,color,spec_clear"
+    : "quoted_at,message_id,chat_name,sender_name,from_mid,category,model_key,model,capacity,color,price,trade_side";
+  let query = supabaseClient
+    .from(sourceTable)
+    .select(columns)
+    .eq("from_mid", row.from_mid);
+  if (selectedDate) query = query.eq("quote_date", selectedDate);
+  if (!isBuy) query = query.eq("trade_side", "sell");
+  const { data, error } = await query.order("quoted_at", { ascending: false }).limit(800);
+  if (error) {
+    detailTicks.innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
+    return;
+  }
+
+  const messages = groupSenderMessages(data || []);
+  if (!messages.length) {
+    detailTicks.textContent = `${selectedDate} 尚無${isBuy ? "徵收" : "賣貨"}訊息`;
+    return;
+  }
+  detailTicks.innerHTML = messages.map((items) => {
+    const first = items[0];
+    const meta = [first.chat_name, formatShortTime(first.quoted_at)].filter(Boolean).map(escapeHtml).join(" · ");
+    if (isBuy) {
+      const rawLines = [...new Set(items.map((item) => (item.raw_line || "").trim()).filter(Boolean))];
+      const models = [...new Set(items.map((item) => item.model_key).filter(Boolean))];
+      const content = rawLines.length ? rawLines : models;
+      return `<div class="detail-tick-row sender-message-row"><span class="muted">${meta}</span>${content.map((line) => `<div class="sender-message-line">${escapeHtml(line)}</div>`).join("")}</div>`;
+    }
+    const saleLines = items.map((item) => {
+      const spec = [item.model || item.model_key, item.capacity, item.color].filter(Boolean).join(" ");
+      return `${spec || item.model_key || "未辨識型號"}${item.price != null ? `　$${formatPrice(item.price)}` : ""}`;
+    });
+    return `<div class="detail-tick-row sender-message-row"><span class="muted">${meta}</span>${saleLines.map((line) => `<div class="sender-message-line">${escapeHtml(line)}</div>`).join("")}</div>`;
+  }).join("");
+}
+
 function updateSenderLeaderboardHeading() {
   if (!senderLeaderboardSummary) return;
   const side = activeTradeSide === "buy" ? "買單徵收" : "賣單報價";
@@ -1078,10 +1165,11 @@ function renderLeaderboards(senderRows, modelRows) {
   const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
   const countLabel = activeTradeSide === "buy" ? "徵收" : "報價";
 
+  currentSenderLeaderboardRows = senderRows;
   senderLeaderboard.innerHTML = senderRows.length
-    ? senderRows.map((r) => {
+    ? senderRows.map((r, index) => {
       const { who } = formatSenderDisplay(r);
-      return `<li><span class="rank-name" title="${senderRankTitle(r)}">${who}</span><span class="rank-meta">訊息 ${r.message_count} · ${countLabel} ${r.quote_count}</span></li>`;
+      return `<li><button type="button" class="rank-name rank-name-button" data-sender-index="${index}" title="${escapeHtml(senderRankTitle(r))}">${escapeHtml(who)}</button><span class="rank-meta">訊息 ${r.message_count} · ${countLabel} ${r.quote_count}</span></li>`;
     }).join("")
     : '<li class="muted">尚無資料（需執行 migration + 重跑腳本）</li>';
 
@@ -1406,6 +1494,18 @@ if (tradeSideToggle) {
     const btn = e.target.closest(".segmented-btn");
     if (!btn) return;
     setActiveTradeSide(btn.dataset.side);
+  });
+}
+if (senderLeaderboard) {
+  senderLeaderboard.addEventListener("click", (event) => {
+    const button = event.target.closest(".rank-name-button");
+    if (!button) return;
+    const row = currentSenderLeaderboardRows[Number(button.dataset.senderIndex)];
+    if (row) {
+      openSenderDetail(row).catch((error) => {
+        detailTicks.innerHTML = `<span class="error">${escapeHtml(error.message)}</span>`;
+      });
+    }
   });
 }
 searchInput.addEventListener("input", applyFilters);

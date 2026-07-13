@@ -637,10 +637,41 @@ tbody tr:hover {
   word-break: break-all;
 }
 
+.rank-name-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+
+.rank-name-button:hover,
+.rank-name-button:focus-visible {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
 .rank-meta {
   color: var(--muted);
   font-size: 0.85rem;
   white-space: nowrap;
+}
+
+.sender-message-row {
+  display: block;
+}
+
+.sender-message-line {
+  margin-top: 6px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .side-tag {
