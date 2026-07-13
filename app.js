@@ -52,6 +52,7 @@ const statRecords = document.getElementById("statRecords");
 const statQuotes = document.getElementById("statQuotes");
 const senderLeaderboard = document.getElementById("senderLeaderboard");
 const modelLeaderboard = document.getElementById("modelLeaderboard");
+const modelLeaderboardSummary = document.getElementById("modelLeaderboardSummary");
 const detailModal = document.getElementById("detailModal");
 const detailTitle = document.getElementById("detailTitle");
 const detailSubtitle = document.getElementById("detailSubtitle");
@@ -1058,7 +1059,16 @@ function senderRankTitle(row) {
   return parts.join(" · ");
 }
 
+function updateModelLeaderboardHeading() {
+  if (!modelLeaderboardSummary) return;
+  const side = activeTradeSide === "buy" ? "買單徵收" : "賣單報價";
+  modelLeaderboardSummary.textContent = `機型熱度排行（${side} · 同一人只算 1 次）`;
+}
+
 function renderLeaderboards(senderRows, modelRows) {
+  updateModelLeaderboardHeading();
+  const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
+
   senderLeaderboard.innerHTML = senderRows.length
     ? senderRows.map((r) => {
       const { who } = formatSenderDisplay(r);
@@ -1067,7 +1077,7 @@ function renderLeaderboards(senderRows, modelRows) {
     : '<li class="muted">尚無資料（需執行 migration + 重跑腳本）</li>';
 
   modelLeaderboard.innerHTML = modelRows.length
-    ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} 人</span></li>`).join("")
+    ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} ${peopleLabel}</span></li>`).join("")
     : '<li class="muted">尚無資料</li>';
 }
 
@@ -1075,6 +1085,16 @@ async function loadDashboard(selectedDate) {
   const statsTable = table("SUPABASE_STATS_TABLE");
   const senderTable = table("SUPABASE_SENDER_STATS_TABLE");
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
+  const isBuy = activeTradeSide === "buy";
+
+  const tickQuery = isBuy
+    ? Promise.resolve({ data: [], error: null })
+    : supabaseClient
+      .from(ticksTable)
+      .select("category,model_key,trade_side,price,discount_zhe,from_mid,sender_name")
+      .eq("quote_date", selectedDate)
+      .eq("trade_side", "sell")
+      .limit(10000);
 
   const [
     { data: stats, error: statsError },
@@ -1083,12 +1103,18 @@ async function loadDashboard(selectedDate) {
   ] = await Promise.all([
     supabaseClient.from(statsTable).select("*").eq("quote_date", selectedDate).maybeSingle(),
     supabaseClient.from(senderTable).select("from_mid,sender_name,top_chat_name,message_count,quote_count").eq("quote_date", selectedDate).order("quote_count", { ascending: false }).limit(10),
-    supabaseClient.from(ticksTable).select("category,model_key,trade_side,price,discount_zhe,from_mid,sender_name").eq("quote_date", selectedDate).limit(10000),
+    tickQuery,
   ]);
 
   const tickRows = ticksError ? [] : (ticks || []);
-  rebuildDayTopPriceCounts(tickRows);
-  rebuildDayLowestDiscount(tickRows, allRows);
+  if (!isBuy) {
+    rebuildDayTopPriceCounts(tickRows);
+    rebuildDayLowestDiscount(tickRows, allRows);
+  }
+
+  const modelRows = isBuy
+    ? buildModelRowsFromBuyDemand(buyDemandTicks)
+    : buildModelRowsFromTicks(tickRows);
 
   if (statsError?.code === "42P01") {
     statMessages.textContent = "—";
@@ -1096,14 +1122,12 @@ async function loadDashboard(selectedDate) {
     statRecords.textContent = "—";
     statQuotes.textContent = "—";
     senderLeaderboard.innerHTML = '<li class="muted">資料表不存在，請在 Supabase 執行 supabase_migration_v2.sql</li>';
-    renderLeaderboards([], buildModelRowsFromTicks(ticks));
+    renderLeaderboards([], modelRows);
     return;
   }
   if (statsError) throw statsError;
   if (senderError && senderError.code !== "42P01") throw senderError;
-  if (ticksError && ticksError.code !== "42P01") throw ticksError;
-
-  const modelRows = buildModelRowsFromTicks(ticks);
+  if (!isBuy && ticksError && ticksError.code !== "42P01") throw ticksError;
 
   if (!stats) {
     statMessages.textContent = "—";
@@ -1111,16 +1135,32 @@ async function loadDashboard(selectedDate) {
     statRecords.textContent = "—";
     statQuotes.textContent = "—";
     senderLeaderboard.innerHTML = '<li class="muted">尚無同步紀錄（手機 run.py / config.py 需 v2 版，跑完應寫入 daily_run_stats）</li>';
+    updateModelLeaderboardHeading();
+    const peopleLabel = activeTradeSide === "buy" ? "人徵收" : "人報價";
     modelLeaderboard.innerHTML = modelRows.length
-      ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} 人</span></li>`).join("")
+      ? modelRows.map((r) => `<li><span class="rank-name">${r.model_key}</span><span class="rank-meta">${r.total} ${peopleLabel}</span></li>`).join("")
       : '<li class="muted">尚無資料</li>';
   } else {
     statMessages.textContent = stats.total_messages ?? "—";
     statObservations.textContent = stats.total_observations ?? "—";
     statRecords.textContent = stats.total_records ?? "—";
     statQuotes.textContent = stats.total_quotes ?? "—";
-    renderLeaderboards(mergeSenderQuoteCounts(senders, ticks), modelRows);
+    renderLeaderboards(mergeSenderQuoteCounts(senders, isBuy ? [] : tickRows), modelRows);
   }
+}
+
+function buildModelRowsFromBuyDemand(ticks) {
+  const byModel = new Map();
+  for (const t of ticks || []) {
+    const modelKey = (t.model_key || "").trim();
+    if (!modelKey) continue;
+    if (!byModel.has(modelKey)) byModel.set(modelKey, new Set());
+    byModel.get(modelKey).add(personKeyFromTick(t));
+  }
+  return [...byModel.entries()]
+    .map(([model_key, people]) => ({ model_key, total: people.size }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10);
 }
 
 function buildModelRowsFromTicks(ticks) {
@@ -1247,6 +1287,7 @@ async function loadRowsForDate(selectedDate) {
   if (activeTradeSide === "buy") {
     await loadBuyDemandForDate(selectedDate);
     latestSyncTime = await fetchLatestSyncTime(selectedDate);
+    await loadDashboard(selectedDate);
     if (!allBuyDemandRows.length) {
       setPriceViewMessage("今天尚無徵收需求資料（請確認已執行 migration v7 並重跑 run.py）");
     } else {
