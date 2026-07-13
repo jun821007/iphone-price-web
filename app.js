@@ -518,11 +518,41 @@ function splitModelKey(modelKey) {
   return { model, capacity, color };
 }
 
+function ipadConnectionFromKey(modelKey) {
+  const parts = String(modelKey || "").trim().split(/\s+/);
+  const last = (parts[parts.length - 1] || "").toLowerCase();
+  if (last === "lte") return "LTE";
+  if (last === "wifi") return "WiFi";
+  return "";
+}
+
+function ipadBaseModelName(row) {
+  const name = row.model || splitModelKey(row.model_key).model || row.model_key || "";
+  return name.replace(/\s*(WiFi|LTE)\s*$/i, "").trim();
+}
+
+function ipadRowModelLabel(row) {
+  if (row.category !== "new_ipad") {
+    return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+  }
+  const base = ipadBaseModelName(row);
+  const conn = ipadConnectionFromKey(row.model_key)
+    || (/\blte\b/i.test(row.model || "") ? "LTE" : "")
+    || (/\bwifi\b/i.test(row.model || "") ? "WiFi" : "");
+  return conn ? `${base} ${conn}` : base;
+}
+
 function modelGroupKey(row) {
+  if (row.category === "new_ipad") {
+    return ipadBaseModelName(row).toLowerCase();
+  }
   return (row.model || splitModelKey(row.model_key).model || row.model_key || "").toLowerCase();
 }
 
 function modelGroupLabel(row) {
+  if (row.category === "new_ipad") {
+    return ipadBaseModelName(row) || "—";
+  }
   return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
 }
 
@@ -597,7 +627,7 @@ function renderBuyDemandList(rows) {
     });
     const rowsHtml = groupRows.map((row) => {
       const index = rows.indexOf(row);
-      const modelLabel = row.model || group.label;
+      const modelLabel = ipadRowModelLabel(row);
       const specBadge = row.spec_clear
         ? ""
         : '<span class="spec-unclear-tag">規格未明</span>';
@@ -718,7 +748,7 @@ function renderCompactPriceList(rows) {
     });
     const rowsHtml = sortedRows.map((row) => {
       const index = rows.indexOf(row);
-      const modelLabel = row.model || group.label;
+      const modelLabel = ipadRowModelLabel(row);
       return `
       <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
         <span class="compact-model">${modelLabel}</span>
@@ -829,7 +859,7 @@ async function openDetailPanel(row) {
   const classifyDetails = document.querySelector(".detail-classify-details");
   if (classifyDetails) classifyDetails.open = false;
   setClassifyStatus("");
-  const label = [row.model || row.model_key, row.capacity, row.color].filter(Boolean).join(" ");
+  const label = [ipadRowModelLabel(row), row.capacity, row.color].filter(Boolean).join(" ");
   detailTitle.textContent = label || row.model_key;
   const specNote = isBuy && row.spec_clear === false ? " · 規格未明" : "";
   detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${isBuy ? "買單徵收" : "賣單"} · ${row.model_key}${specNote}`;
