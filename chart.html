@@ -64,7 +64,7 @@
 
     <p id="chartStatus" class="chart-status muted" aria-live="polite"></p>
 
-    <section class="card chart-panel">
+    <section class="card chart-panel" id="priceChartPanel">
       <h2 class="chart-panel-title">價格 K 線</h2>
       <p class="chart-panel-desc muted">單選：日 OHLC；多選：收盤價折線</p>
       <div class="chart-canvas-wrap chart-canvas-wrap--tall">
@@ -72,9 +72,9 @@
       </div>
     </section>
 
-    <section class="card chart-panel">
-      <h2 class="chart-panel-title">報價次數 K 線</h2>
-      <p class="chart-panel-desc muted">每日總人次（同人同價只算 1 次）</p>
+    <section class="card chart-panel" id="countChartPanel">
+      <h2 class="chart-panel-title" id="countChartTitle">報價次數 K 線</h2>
+      <p class="chart-panel-desc muted" id="countChartDesc">每日總人次（同人同價只算 1 次）</p>
       <div class="chart-canvas-wrap chart-canvas-wrap--tall">
         <canvas id="countChart" aria-label="報價次數 K 線"></canvas>
       </div>
@@ -83,6 +83,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
-  <script src="chart.js?v=1"></script>
+  <script src="chart.js?v=2"></script>
 </body>
 </html>

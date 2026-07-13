@@ -68,6 +68,10 @@
           <label for="pendingDate">日期</label>
           <select id="pendingDate"></select>
         </div>
+        <nav class="tabs admin-review-tabs" id="adminReviewTabs" role="tablist">
+          <button type="button" class="tab active" data-tab="quote" aria-selected="true">報價待審</button>
+          <button type="button" class="tab" data-tab="demand" aria-selected="false">徵收待綁定</button>
+        </nav>
         <button id="refreshPendingBtn" type="button" class="btn-primary">重新載入待審</button>
         <button id="dedupPendingBtn" type="button" class="btn-secondary">清除本日重複待審</button>
         <label class="auto-approve-toggle">
@@ -76,6 +80,7 @@
         </label>
       </div>
       <div id="pendingList" class="pending-list"></div>
+      <div id="buyDemandPendingList" class="pending-list" hidden></div>
     </section>
   </div>
   <script src="admin.js?v=9"></script>

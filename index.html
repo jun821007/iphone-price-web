@@ -25,6 +25,14 @@
       </nav>
     </header>
 
+    <div class="trade-side-bar card">
+      <span class="filter-label">方向</span>
+      <div class="segmented" id="tradeSideToggle" role="group">
+        <button type="button" class="segmented-btn active" data-side="sell">賣單</button>
+        <button type="button" class="segmented-btn" data-side="buy">買單（徵收熱度）</button>
+      </div>
+    </div>
+
     <section id="dashboard" class="dashboard card">
       <details class="collapse-section" open>
         <summary class="collapse-summary section-title">今日打卡儀表板</summary>
@@ -139,7 +147,7 @@
     </div>
   </dialog>
 
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch(() => {});

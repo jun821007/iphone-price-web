@@ -2,6 +2,8 @@ const pendingDate = document.getElementById("pendingDate");
 const refreshPendingBtn = document.getElementById("refreshPendingBtn");
 const dedupPendingBtn = document.getElementById("dedupPendingBtn");
 const pendingList = document.getElementById("pendingList");
+const buyDemandPendingList = document.getElementById("buyDemandPendingList");
+const adminReviewTabs = document.getElementById("adminReviewTabs");
 const newBrandName = document.getElementById("newBrandName");
 const addBrandBtn = document.getElementById("addBrandBtn");
 const brandList = document.getElementById("brandList");
@@ -64,6 +66,8 @@ let catalogByCategory = {};
 let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
 let pendingRowsById = {};
+let buyDemandPendingRowsById = {};
+let activeAdminTab = "quote";
 let approvedBindingMap = new Map();
 const AUTO_APPROVE_KEY = "audit_auto_approve_learned";
 
@@ -156,6 +160,8 @@ function table(name) {
     SUPABASE_PENDING_TABLE: "pending_quotes",
     SUPABASE_TICKS_TABLE: "quote_ticks",
     SUPABASE_MSRP_TABLE: "product_msrp",
+    SUPABASE_BUY_DEMAND_TABLE: "buy_demand_ticks",
+    SUPABASE_BUY_DEMAND_PENDING_TABLE: "buy_demand_pending",
   };
   return fallbacks[name] || name;
 }
@@ -978,6 +984,131 @@ async function addBaseModel() {
   alert(`已新增型號 ${baseModel}（${category}）`);
 }
 
+function setAdminReviewTab(tab) {
+  activeAdminTab = tab === "demand" ? "demand" : "quote";
+  adminReviewTabs?.querySelectorAll(".tab").forEach((btn) => {
+    const on = btn.dataset.tab === activeAdminTab;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  if (pendingList) pendingList.hidden = activeAdminTab !== "quote";
+  if (buyDemandPendingList) buyDemandPendingList.hidden = activeAdminTab !== "demand";
+  if (dedupPendingBtn) dedupPendingBtn.hidden = activeAdminTab !== "quote";
+  if (autoApproveLearned?.closest("label")) {
+    autoApproveLearned.closest("label").hidden = activeAdminTab !== "quote";
+  }
+}
+
+function renderBuyDemandPending(rows) {
+  buyDemandPendingRowsById = {};
+  if (!buyDemandPendingList) return;
+  if (!rows.length) {
+    buyDemandPendingList.innerHTML = '<div class="card muted">今天沒有徵收待綁定訊息</div>';
+    return;
+  }
+  buyDemandPendingList.innerHTML = rows.map((row) => {
+    buyDemandPendingRowsById[row.id] = row;
+    const { who, group } = formatSenderLabel(row);
+    const guess = guessBinding(row.raw_line || "");
+    const kw = row.intent_keyword ? `「${row.intent_keyword}」` : "徵收";
+    return `
+    <article class="card pending-card buy-demand-card" data-id="${row.id}">
+      <div class="pending-meta">#${row.id} · ${kw} · ${who}</div>
+      <div class="pending-sub">${group || "（群組未知）"}</div>
+      <pre class="pending-text">${row.raw_line}</pre>
+      <p class="pending-price-note">無價格徵收訊息：綁定型號後寫入徵收熱度</p>
+      ${learnedBadge(guess)}
+      <div class="pending-actions">
+        <p class="muted" style="margin:0 0 8px;font-size:0.85rem">綁定型號</p>
+        <div class="pending-bind-grid">
+          <label>pipeline 分類${categorySelect(guess.category)}</label>
+          <label>型號${baseModelSelect(guess.category, guess.baseModel)}</label>
+          <label>${capacitySelect(guess.capacity)}</label>
+          <label>${colorSelect(guess.color)}</label>
+        </div>
+        <button type="button" class="btn-primary approve-demand-btn">核准綁定</button>
+        <button type="button" class="btn-secondary reject-demand-btn">忽略</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+async function loadBuyDemandPending() {
+  const date = pendingDate.value;
+  if (!date) return;
+  const pendingTable = table("SUPABASE_BUY_DEMAND_PENDING_TABLE");
+  const { data, error } = await supabaseClient
+    .from(pendingTable)
+    .select("*")
+    .eq("quote_date", date)
+    .eq("status", "pending")
+    .order("id", { ascending: false });
+  if (error) {
+    if (error.code === "42P01") {
+      if (buyDemandPendingList) {
+        buyDemandPendingList.innerHTML = '<div class="card muted">請在 Supabase 執行 supabase_migration_v7_buy_demand.sql</div>';
+      }
+      return;
+    }
+    throw error;
+  }
+  renderBuyDemandPending(data || []);
+}
+
+async function approveBuyDemandPending(card, rowId) {
+  const pendingRow = buyDemandPendingRowsById[rowId];
+  if (!pendingRow) throw new Error("找不到待綁定資料");
+  const category = card.querySelector(".bind-category").value;
+  const baseModel = card.querySelector(".bind-base-model").value;
+  const capacity = card.querySelector(".bind-capacity").value;
+  const color = card.querySelector(".bind-color").value;
+  const binding = resolveModelBinding(category, baseModel, capacity, color);
+  if (!binding?.model_key) throw new Error("請選擇有效型號");
+
+  const date = pendingDate.value;
+  const now = new Date().toISOString();
+  const demandTable = table("SUPABASE_BUY_DEMAND_TABLE");
+  const specClear = Boolean(capacity || color);
+  await supabaseClient.from(demandTable).upsert({
+    quote_date: date,
+    category: binding.category,
+    model_key: binding.model_key,
+    model: binding.model,
+    capacity: binding.capacity,
+    color: binding.color,
+    spec_clear: specClear,
+    intent_keyword: pendingRow.intent_keyword || "",
+    from_mid: pendingRow.from_mid || "",
+    sender_name: pendingRow.sender_name || "",
+    chat_id: pendingRow.chat_id || "",
+    chat_name: pendingRow.chat_name || "",
+    message_id: pendingRow.message_id,
+    raw_line: pendingRow.raw_line,
+    quoted_at: now,
+    updated_at: now,
+  }, { onConflict: "quote_date,from_mid,category,model_key" });
+
+  await supabaseClient.from(table("SUPABASE_BUY_DEMAND_PENDING_TABLE")).update({
+    status: "approved",
+    bound_category: binding.category,
+    bound_model_key: binding.model_key,
+    reviewed_at: now,
+    updated_at: now,
+  }).eq("id", pendingRow.id);
+
+  await loadBuyDemandPending();
+}
+
+async function rejectBuyDemandPending(rowId) {
+  const now = new Date().toISOString();
+  await supabaseClient.from(table("SUPABASE_BUY_DEMAND_PENDING_TABLE")).update({
+    status: "rejected",
+    reviewed_at: now,
+    updated_at: now,
+  }).eq("id", rowId);
+  await loadBuyDemandPending();
+}
+
 async function initAdmin() {
   try {
     initClient();
@@ -993,7 +1124,9 @@ async function initAdmin() {
     refreshModelMsrpField();
     await loadModelOptions();
     await loadPendingDates();
+    setAdminReviewTab("quote");
     await loadPending();
+    await loadBuyDemandPending();
   } catch (error) {
     pendingList.innerHTML = `<div class="card error">${error.message}</div>`;
   }
@@ -1001,7 +1134,13 @@ async function initAdmin() {
 
 initAdmin();
 
-refreshPendingBtn?.addEventListener("click", () => loadPending().catch((e) => alert(e.message)));
+refreshPendingBtn?.addEventListener("click", () => {
+  if (activeAdminTab === "demand") {
+    loadBuyDemandPending().catch((e) => alert(e.message));
+  } else {
+    loadPending().catch((e) => alert(e.message));
+  }
+});
 dedupPendingBtn?.addEventListener("click", () => dedupePendingForDate().catch((e) => alert(e.message)));
 addBrandBtn?.addEventListener("click", () => addBrand().catch((e) => alert(e.message)));
 addModelBtn?.addEventListener("click", () => addBaseModel().catch((e) => alert(e.message)));
@@ -1030,4 +1169,30 @@ pendingList.addEventListener("click", async (event) => {
 pendingDate.addEventListener("change", () => {
   if (statAutoHint) statAutoHint.textContent = "";
   loadPending();
+  loadBuyDemandPending().catch(() => {});
+});
+
+adminReviewTabs?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab");
+  if (!btn) return;
+  setAdminReviewTab(btn.dataset.tab);
+  if (btn.dataset.tab === "demand") {
+    loadBuyDemandPending().catch((err) => alert(err.message));
+  }
+});
+
+buyDemandPendingList?.addEventListener("click", async (event) => {
+  const card = event.target.closest(".buy-demand-card");
+  if (!card) return;
+  const rowId = Number(card.dataset.id);
+  try {
+    if (event.target.classList.contains("approve-demand-btn")) {
+      await approveBuyDemandPending(card, rowId);
+    }
+    if (event.target.classList.contains("reject-demand-btn")) {
+      await rejectBuyDemandPending(rowId);
+    }
+  } catch (error) {
+    alert(error.message);
+  }
 });

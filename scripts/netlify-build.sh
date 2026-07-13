@@ -14,6 +14,8 @@ window.SUPABASE_SENDER_STATS_TABLE = "sender_daily_stats";
 window.SUPABASE_PENDING_TABLE = "pending_quotes";
 window.SUPABASE_TICKS_TABLE = "quote_ticks";
 window.SUPABASE_MSRP_TABLE = "product_msrp";
+window.SUPABASE_BUY_DEMAND_TABLE = "buy_demand_ticks";
+window.SUPABASE_BUY_DEMAND_PENDING_TABLE = "buy_demand_pending";
 EOF
 
 echo "config.js generated for Netlify deploy"

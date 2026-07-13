@@ -41,6 +41,7 @@ const marketFilter = document.getElementById("marketFilter");
 const reloadBtn = document.getElementById("reloadBtn");
 const tableBody = document.getElementById("tableBody");
 const compactPriceList = document.getElementById("compactPriceList");
+const tradeSideToggle = document.getElementById("tradeSideToggle");
 const priceTable = document.querySelector(".table-wrap table");
 const summary = document.getElementById("summary");
 const lastUpdated = document.getElementById("lastUpdated");
@@ -72,7 +73,10 @@ let allRows = [];
 let dayTopPriceCounts = new Map();
 let dayLowestDiscountBySpec = new Map();
 let activeCategory = "new";
+let activeTradeSide = "sell";
 let activeMarketFilter = "";
+let allBuyDemandRows = [];
+let buyDemandTicks = [];
 let latestSyncTime = null;
 let currentDetailRow = null;
 let deviceTypes = [...FALLBACK_DEVICE_TYPES];
@@ -90,6 +94,8 @@ function table(name) {
     SUPABASE_PENDING_TABLE: "pending_quotes",
     SUPABASE_TICKS_TABLE: "quote_ticks",
     SUPABASE_MSRP_TABLE: "product_msrp",
+    SUPABASE_BUY_DEMAND_TABLE: "buy_demand_ticks",
+    SUPABASE_BUY_DEMAND_PENDING_TABLE: "buy_demand_pending",
   };
   return fallbacks[name] || name;
 }
@@ -511,7 +517,105 @@ function showCompactPriceView() {
   if (compactPriceList) compactPriceList.hidden = false;
 }
 
+function aggregateBuyDemandRows(ticks) {
+  const bySpec = new Map();
+  for (const t of ticks || []) {
+    const modelKey = (t.model_key || "").trim();
+    if (!modelKey) continue;
+    const specKey = `${t.category}|${modelKey}`;
+    if (!bySpec.has(specKey)) {
+      bySpec.set(specKey, {
+        category: t.category,
+        model_key: modelKey,
+        model: t.model || "",
+        capacity: t.capacity || "",
+        color: t.color || "",
+        trade_side: "buy",
+        spec_clear: t.spec_clear !== false,
+        seekers: new Map(),
+      });
+    }
+    const bucket = bySpec.get(specKey);
+    if (t.spec_clear === false) bucket.spec_clear = false;
+    bucket.seekers.set(personKeyFromTick(t), t);
+  }
+  return [...bySpec.values()].map((b) => ({
+    ...b,
+    seeker_count: b.seekers.size,
+    total_quotes: b.seekers.size,
+  }));
+}
+
+function renderBuyDemandList(rows) {
+  if (!compactPriceList) return;
+  if (!rows.length) {
+    compactPriceList.innerHTML = '<div class="compact-empty muted">這個分類今天沒有徵收需求</div>';
+    return;
+  }
+
+  const sorted = [...rows].sort((a, b) => {
+    const diff = (b.seeker_count || 0) - (a.seeker_count || 0);
+    if (diff) return diff;
+    return String(a.model_key).localeCompare(String(b.model_key), "zh-Hant");
+  });
+
+  const groups = new Map();
+  for (const row of sorted) {
+    const key = modelGroupKey(row);
+    if (!groups.has(key)) {
+      groups.set(key, { label: modelGroupLabel(row), rows: [] });
+    }
+    groups.get(key).rows.push(row);
+  }
+
+  const sortedGroups = [...groups.entries()].sort((a, b) => {
+    const maxA = Math.max(...a[1].rows.map((r) => r.seeker_count || 0));
+    const maxB = Math.max(...b[1].rows.map((r) => r.seeker_count || 0));
+    if (maxB !== maxA) return maxB - maxA;
+    return a[1].label.localeCompare(b[1].label, "zh-Hant");
+  });
+
+  compactPriceList.innerHTML = sortedGroups.map(([, group]) => {
+    const rowsHtml = group.rows.map((row) => {
+      const index = rows.indexOf(row);
+      const modelLabel = row.model || group.label;
+      const specBadge = row.spec_clear
+        ? ""
+        : '<span class="spec-unclear-tag">規格未明</span>';
+      return `
+      <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
+        <span class="compact-model">${modelLabel}${specBadge}</span>
+        <span class="compact-color">${row.color || "—"}</span>
+        <span class="compact-capacity">${row.capacity || "—"}</span>
+        <span class="compact-price compact-demand-count"><span class="compact-count">×${row.seeker_count || 0}</span> 人</span>
+        <span class="compact-discount-low muted">—</span>
+      </div>`;
+    }).join("");
+
+    return `
+    <details class="model-group" open>
+      <summary class="model-group-summary">
+        <span class="model-group-name">${group.label}</span>
+        <span class="model-group-meta">${group.rows.length} 規格</span>
+      </summary>
+      <div class="model-group-body">
+        <div class="compact-row compact-header compact-header--buy">
+          <span>型號</span><span>顏色</span><span>容量</span><span>徵收人數</span><span></span>
+        </div>
+        ${rowsHtml}
+      </div>
+    </details>`;
+  }).join("");
+}
+
 function lowestDiscountLabelForRow(row) {
+  const specKey = `${row.category}|${row.model_key}|${row.trade_side || "sell"}`;
+  const zhe = dayLowestDiscountBySpec.get(specKey);
+  if (zhe != null) return formatDiscountValue(zhe);
+  return "—";
+}
+
+function renderCompactPriceList(rows) {
   const specKey = `${row.category}|${row.model_key}|${row.trade_side || "sell"}`;
   const zhe = dayLowestDiscountBySpec.get(specKey);
   if (zhe != null) return formatDiscountValue(zhe);
@@ -624,7 +728,11 @@ function renderCompactPriceList(rows) {
 
 function renderPriceView(rows) {
   showCompactPriceView();
-  renderCompactPriceList(rows);
+  if (activeTradeSide === "buy") {
+    renderBuyDemandList(rows);
+  } else {
+    renderCompactPriceList(rows);
+  }
 }
 
 function setPriceViewMessage(message, type = "muted") {
@@ -688,25 +796,64 @@ function updateDetailChartLink(row) {
 
 async function openDetailPanel(row) {
   if (!detailModal) return;
+  const isBuy = row.trade_side === "buy" || activeTradeSide === "buy";
   await loadModelCatalog();
   currentDetailRow = row;
-  populateClassifyForm(row);
+  if (!isBuy) {
+    populateClassifyForm(row);
+  }
   const classifyDetails = document.querySelector(".detail-classify-details");
   if (classifyDetails) classifyDetails.open = false;
   setClassifyStatus("");
   const label = [row.model || row.model_key, row.capacity, row.color].filter(Boolean).join(" ");
   detailTitle.textContent = label || row.model_key;
-  detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${row.trade_side === "buy" ? "買單" : "賣單"} · ${row.model_key}`;
-  detailStats.innerHTML = `
-    <div class="detail-stat"><span class="muted">建議售價</span><strong>${formatMaybePrice(row.msrp)}</strong></div>
-    <div class="detail-stat"><span class="muted">今日熱門價</span><strong>${formatMaybePrice(row.top_price)}</strong></div>
-    <div class="detail-stat"><span class="muted">目前折數</span><strong>${formatDiscountLabel(row.top_discount_zhe)}</strong></div>
-  `;
+  const specNote = isBuy && row.spec_clear === false ? " · 規格未明" : "";
+  detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${isBuy ? "買單徵收" : "賣單"} · ${row.model_key}${specNote}`;
+  if (isBuy) {
+    detailStats.innerHTML = `
+      <div class="detail-stat"><span class="muted">徵收人數</span><strong>${row.seeker_count ?? 0} 人</strong></div>
+      <div class="detail-stat"><span class="muted">規格狀態</span><strong>${row.spec_clear === false ? "規格未明" : "已辨識"}</strong></div>
+    `;
+  } else {
+    detailStats.innerHTML = `
+      <div class="detail-stat"><span class="muted">建議售價</span><strong>${formatMaybePrice(row.msrp)}</strong></div>
+      <div class="detail-stat"><span class="muted">今日熱門價</span><strong>${formatMaybePrice(row.top_price)}</strong></div>
+      <div class="detail-stat"><span class="muted">目前折數</span><strong>${formatDiscountLabel(row.top_discount_zhe)}</strong></div>
+    `;
+  }
   detailTicks.textContent = "載入中…";
   updateDetailChartLink(row);
   detailModal.showModal();
 
   const selectedDate = dateSelect?.value || "";
+  if (isBuy) {
+    const demandTable = table("SUPABASE_BUY_DEMAND_TABLE");
+    let tickQuery = supabaseClient
+      .from(demandTable)
+      .select("quoted_at,quote_date,chat_name,sender_name,from_mid,raw_line,intent_keyword,spec_clear")
+      .eq("category", row.category)
+      .eq("model_key", row.model_key);
+    if (selectedDate) tickQuery = tickQuery.eq("quote_date", selectedDate);
+    const { data, error } = await tickQuery.order("quoted_at", { ascending: false }).limit(200);
+    if (error) {
+      detailTicks.innerHTML = `<span class="error">${error.message}</span>`;
+      return;
+    }
+    const ticks = data || [];
+    if (!ticks.length) {
+      detailTicks.textContent = `${selectedDate} 尚無徵收紀錄`;
+      return;
+    }
+    detailTicks.innerHTML = ticks.map((t) => {
+      const { who, group } = formatPersonLabel(t);
+      const when = formatShortTime(t.quoted_at);
+      const kw = t.intent_keyword ? `「${t.intent_keyword}」` : "";
+      const line = (t.raw_line || "").trim();
+      return `<div class="detail-tick-row demand-person-row"><strong>${who}</strong><span class="muted">${[group, when, kw].filter(Boolean).join(" · ")}</span>${line ? `<div class="demand-raw-line muted">${line}</div>` : ""}</div>`;
+    }).join("");
+    return;
+  }
+
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
   let tickQuery = supabaseClient
     .from(ticksTable)
@@ -884,7 +1031,14 @@ async function fetchLatestSyncTime(selectedDate) {
 
 function renderSummary(rows, selectedDate) {
   const label = CATEGORY_LABELS[activeCategory] || activeCategory;
-  summary.innerHTML = `<div class="summary-badge">${label}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個商品規格</div>`;
+  const sideLabel = activeTradeSide === "buy" ? "徵收熱款" : "商品規格";
+  const totalSeekers = activeTradeSide === "buy"
+    ? rows.reduce((sum, r) => sum + (r.seeker_count || 0), 0)
+    : 0;
+  const extra = activeTradeSide === "buy" && totalSeekers
+    ? ` · 合計 <strong>${totalSeekers}</strong> 人次（同人同規格只算 1）`
+    : "";
+  summary.innerHTML = `<div class="summary-badge">${label} · ${sideLabel}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個型號規格${extra}</div>`;
 }
 
 function formatSenderDisplay(row) {
@@ -1009,9 +1163,10 @@ function mergeSenderQuoteCounts(senderRows, ticks) {
 function applyFilters() {
   const keyword = searchInput.value.trim().toLowerCase();
   const selectedDate = dateSelect.value;
-  const filtered = sortRowsForView(allRows.filter((row) => {
+  const sourceRows = activeTradeSide === "buy" ? allBuyDemandRows : allRows;
+  const filtered = sortRowsForView(sourceRows.filter((row) => {
     if (row.category !== activeCategory) return false;
-    if (!rowMatchesMarketFilter(row)) return false;
+    if (activeTradeSide === "sell" && !rowMatchesMarketFilter(row)) return false;
     if (!keyword) return true;
     const haystack = [row.model, row.model_key, row.capacity, row.color, row.chat_name].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(keyword);
@@ -1020,6 +1175,20 @@ function applyFilters() {
   renderPriceView(filtered);
   renderSummary(filtered, selectedDate);
   updateLastUpdated(latestSyncTime, selectedDate);
+}
+
+function setActiveTradeSide(side) {
+  activeTradeSide = side === "buy" ? "buy" : "sell";
+  if (tradeSideToggle) {
+    tradeSideToggle.querySelectorAll(".segmented-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.side === activeTradeSide);
+    });
+  }
+  document.body.classList.toggle("mode-buy-demand", activeTradeSide === "buy");
+  const selectedDate = dateSelect.value;
+  if (selectedDate) {
+    loadRowsForDate(selectedDate).catch((e) => setPriceViewMessage(e.message, "error"));
+  }
 }
 
 function setActiveCategory(category) {
@@ -1053,9 +1222,40 @@ async function loadAvailableDates() {
   if (dates.length) dateSelect.value = dates[0];
 }
 
+async function loadBuyDemandForDate(selectedDate) {
+  const demandTable = table("SUPABASE_BUY_DEMAND_TABLE");
+  const { data, error } = await supabaseClient
+    .from(demandTable)
+    .select("quote_date,category,model_key,model,capacity,color,spec_clear,from_mid,sender_name,chat_name,raw_line,quoted_at,intent_keyword")
+    .eq("quote_date", selectedDate)
+    .limit(10000);
+  if (error) {
+    if (error.code === "42P01") {
+      buyDemandTicks = [];
+      allBuyDemandRows = [];
+      return;
+    }
+    throw error;
+  }
+  buyDemandTicks = data || [];
+  allBuyDemandRows = aggregateBuyDemandRows(buyDemandTicks);
+}
+
 async function loadRowsForDate(selectedDate) {
   if (!selectedDate) return;
   setPriceViewMessage("載入中…");
+  if (activeTradeSide === "buy") {
+    await loadBuyDemandForDate(selectedDate);
+    latestSyncTime = await fetchLatestSyncTime(selectedDate);
+    if (!allBuyDemandRows.length) {
+      setPriceViewMessage("今天尚無徵收需求資料（請確認已執行 migration v7 並重跑 run.py）");
+    } else {
+      applyFilters();
+    }
+    updateLastUpdated(latestSyncTime, selectedDate);
+    return;
+  }
+
   const { data, error } = await supabaseClient
     .from(table("SUPABASE_TABLE"))
     .select("id,category,model_key,model,capacity,color,msrp,top_discount_zhe,top_price,total_quotes,price_stats,trade_side,chat_name,updated_at,device_type,condition_state,brand")
@@ -1102,6 +1302,13 @@ categoryTabs.addEventListener("click", (e) => {
   const btn = e.target.closest(".tab");
   if (btn) setActiveCategory(btn.dataset.category);
 });
+if (tradeSideToggle) {
+  tradeSideToggle.addEventListener("click", (e) => {
+    const btn = e.target.closest(".segmented-btn");
+    if (!btn) return;
+    setActiveTradeSide(btn.dataset.side);
+  });
+}
 searchInput.addEventListener("input", applyFilters);
 if (marketFilter) {
   marketFilter.addEventListener("change", () => {

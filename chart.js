@@ -20,6 +20,10 @@ const chartStatus = document.getElementById("chartStatus");
 const priceChartCanvas = document.getElementById("priceChart");
 const countChartCanvas = document.getElementById("countChart");
 
+const priceChartPanel = document.getElementById("priceChartPanel");
+const countChartTitle = document.getElementById("countChartTitle");
+const countChartDesc = document.getElementById("countChartDesc");
+
 let supabaseClient = null;
 let activeCategory = "new";
 let activeTradeSide = "sell";
@@ -34,6 +38,7 @@ function table(name) {
   const fallbacks = {
     SUPABASE_TABLE: "iphone_prices",
     SUPABASE_TICKS_TABLE: "quote_ticks",
+    SUPABASE_BUY_DEMAND_TABLE: "buy_demand_ticks",
   };
   return fallbacks[name] || name;
 }
@@ -181,6 +186,36 @@ function clearAllSelected() {
 
 async function loadCatalogModels() {
   const { start, end } = getDateRange();
+  if (activeTradeSide === "buy") {
+    const demandTable = table("SUPABASE_BUY_DEMAND_TABLE");
+    const { data, error } = await supabaseClient
+      .from(demandTable)
+      .select("model_key,model,capacity,color,category")
+      .eq("category", activeCategory)
+      .gte("quote_date", start)
+      .lte("quote_date", end)
+      .limit(8000);
+    if (error) throw error;
+    const byKey = new Map();
+    for (const row of data || []) {
+      const key = (row.model_key || "").trim();
+      if (!key || byKey.has(key)) continue;
+      byKey.set(key, {
+        model_key: key,
+        model: row.model || "",
+        capacity: row.capacity || "",
+        color: row.color || "",
+        category: row.category,
+      });
+    }
+    catalogModels = [...byKey.values()].sort((a, b) =>
+      modelDisplayLabel(a).localeCompare(modelDisplayLabel(b), "zh-Hant"),
+    );
+    applyUrlPrefill();
+    renderModelPicker();
+    return;
+  }
+
   const ticksTable = table("SUPABASE_TICKS_TABLE");
   const { data, error } = await supabaseClient
     .from(ticksTable)
@@ -211,6 +246,17 @@ async function loadCatalogModels() {
   renderModelPicker();
 }
 
+function syncBuyModeUi() {
+  const isBuy = activeTradeSide === "buy";
+  if (priceChartPanel) priceChartPanel.hidden = isBuy;
+  if (countChartTitle) countChartTitle.textContent = isBuy ? "徵收人數走勢" : "報價次數 K 線";
+  if (countChartDesc) {
+    countChartDesc.textContent = isBuy
+      ? "每日徵收人數（同人同規格只算 1 次）"
+      : "每日總人次（同人同價只算 1 次）";
+  }
+}
+
 function applyUrlPrefill() {
   const params = new URLSearchParams(window.location.search);
   const cat = params.get("category");
@@ -229,6 +275,7 @@ function applyUrlPrefill() {
     tradeSideToggle?.querySelectorAll(".segmented-btn").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.side === side);
     });
+    syncBuyModeUi();
   }
   if (modelKey && modelPicker) {
     renderModelPicker();
@@ -293,14 +340,15 @@ function buildCountLineDataset(label, days, dayMap, color) {
   };
 }
 
-function renderCharts(modelSeries, days) {
+function renderCharts(modelSeries, days, isBuy = false) {
   priceChart = destroyChart(priceChart);
   countChart = destroyChart(countChart);
 
   const labels = days.map(formatDayLabel);
   const multi = modelSeries.length > 1;
+  const countLabel = isBuy ? "人" : "次";
 
-  if (multi) {
+  if (!isBuy && multi) {
     priceChart = new Chart(priceChartCanvas, {
       type: "line",
       data: {
@@ -319,49 +367,60 @@ function renderCharts(modelSeries, days) {
           buildCountLineDataset(s.label, days, s.countByDay, LINE_COLORS[i % LINE_COLORS.length]),
         ),
       },
-      options: chartOptions(true, (v) => `${v} 次`),
+      options: chartOptions(true, (v) => `${v} ${countLabel}`),
     });
     return;
   }
 
-  const s = modelSeries[0];
-  const priceDataset = days.map((day) => {
-    const v = s.priceByDay.get(day);
-    if (!v) return null;
-    return { o: v.o, h: v.h, l: v.l, c: v.c };
-  });
-  const countDataset = days.map((day) => {
-    const v = s.countByDay.get(day);
-    if (!v) return null;
-    return { o: v.o, h: v.h, l: v.l, c: v.c };
-  });
+  if (!isBuy && !multi) {
+    const s = modelSeries[0];
+    const priceDataset = days.map((day) => {
+      const v = s.priceByDay.get(day);
+      if (!v) return null;
+      return { o: v.o, h: v.h, l: v.l, c: v.c };
+    });
+    const countDataset = days.map((day) => {
+      const v = s.countByDay.get(day);
+      if (!v) return null;
+      return { o: v.o, h: v.h, l: v.l, c: v.c };
+    });
+    priceChart = new Chart(priceChartCanvas, {
+      type: "candlestick",
+      data: {
+        labels,
+        datasets: [{
+          label: s.label,
+          data: priceDataset,
+          color: { up: "#dc2626", down: "#2563eb", unchanged: "#6b7280" },
+        }],
+      },
+      options: chartOptions(false, (v) => formatPrice(v)),
+    });
+    countChart = new Chart(countChartCanvas, {
+      type: "candlestick",
+      data: {
+        labels,
+        datasets: [{
+          label: s.label,
+          data: countDataset,
+          color: { up: "#059669", down: "#059669", unchanged: "#059669" },
+        }],
+      },
+      options: chartOptions(false, (v) => `${v} ${countLabel}`),
+    });
+    return;
+  }
 
-  const candleOpts = chartOptions(false, (v) => formatPrice(v));
-  const countCandleOpts = chartOptions(false, (v) => `${v} 次`);
-
-  priceChart = new Chart(priceChartCanvas, {
-    type: "candlestick",
-    data: {
-      labels: labels,
-      datasets: [{
-        label: s.label,
-        data: priceDataset,
-        color: { up: "#dc2626", down: "#2563eb", unchanged: "#6b7280" },
-      }],
-    },
-    options: candleOpts,
-  });
+  // 買單：只畫徵收人數（折線）
   countChart = new Chart(countChartCanvas, {
-    type: "candlestick",
+    type: "line",
     data: {
-      labels: labels,
-      datasets: [{
-        label: s.label,
-        data: countDataset,
-        color: { up: "#059669", down: "#059669", unchanged: "#059669" },
-      }],
+      labels,
+      datasets: modelSeries.map((s, i) =>
+        buildCountLineDataset(s.label, days, s.countByDay, LINE_COLORS[i % LINE_COLORS.length]),
+      ),
     },
-    options: countCandleOpts,
+    options: chartOptions(multi, (v) => `${v} 人`),
   });
 }
 
@@ -390,7 +449,33 @@ function chartOptions(showLegend, yFormatter) {
   };
 }
 
+function aggregateDemandCountFlat(ticks, day) {
+  const people = new Set();
+  for (const t of ticks) {
+    if ((t.quote_date || "").slice(0, 10) !== day) continue;
+    people.add(personKeyFromTick(t));
+  }
+  if (!people.size) return null;
+  const n = people.size;
+  return { o: n, h: n, l: n, c: n };
+}
+
 async function fetchTicksForModels(modelKeys, start, end) {
+  if (activeTradeSide === "buy") {
+    const demandTable = table("SUPABASE_BUY_DEMAND_TABLE");
+    const { data, error } = await supabaseClient
+      .from(demandTable)
+      .select("quote_date,quoted_at,from_mid,sender_name,model_key")
+      .eq("category", activeCategory)
+      .in("model_key", modelKeys)
+      .gte("quote_date", start)
+      .lte("quote_date", end)
+      .order("quoted_at", { ascending: true })
+      .limit(12000);
+    if (error) throw error;
+    return data || [];
+  }
+
   const ticksTable = table("SUPABASE_TICKS_TABLE");
   const { data, error } = await supabaseClient
     .from(ticksTable)
@@ -423,30 +508,40 @@ async function drawCharts() {
 
   const ticks = await fetchTicksForModels(selected, start, end);
   const metaByKey = new Map(catalogModels.map((m) => [m.model_key, m]));
+  const isBuy = activeTradeSide === "buy";
   const modelSeries = selected.map((key) => {
     const modelTicks = ticks.filter((t) => t.model_key === key);
     const priceByDay = new Map();
     const countByDay = new Map();
     for (const day of days) {
-      const ohlc = aggregatePriceOHLC(modelTicks, day);
-      const cnt = aggregateCountFlat(modelTicks, day);
-      if (ohlc) priceByDay.set(day, ohlc);
+      if (!isBuy) {
+        const ohlc = aggregatePriceOHLC(modelTicks, day);
+        if (ohlc) priceByDay.set(day, ohlc);
+      }
+      const cnt = isBuy
+        ? aggregateDemandCountFlat(modelTicks, day)
+        : aggregateCountFlat(modelTicks, day);
       if (cnt) countByDay.set(day, cnt);
     }
     const meta = metaByKey.get(key) || { model_key: key };
     return { key, label: modelDisplayLabel(meta), priceByDay, countByDay };
   });
 
-  const hasData = modelSeries.some((s) => s.priceByDay.size > 0);
+  const hasData = modelSeries.some((s) => (isBuy ? s.countByDay.size > 0 : s.priceByDay.size > 0));
   if (!hasData) {
     priceChart = destroyChart(priceChart);
     countChart = destroyChart(countChart);
-    setStatus(`${start}～${end} 所選型號尚無報價資料`, "error");
+    setStatus(
+      `${start}～${end} 所選型號尚無${isBuy ? "徵收" : "報價"}資料`,
+      "error",
+    );
     return;
   }
 
-  renderCharts(modelSeries, days);
-  const mode = selected.length > 1 ? "收盤折線" : "K 線";
+  renderCharts(modelSeries, days, isBuy);
+  const mode = isBuy
+    ? "徵收人數"
+    : (selected.length > 1 ? "收盤折線" : "K 線");
   setStatus(`已繪製 ${selected.length} 個型號（${start}～${end}，${mode}）`);
 }
 
@@ -479,6 +574,7 @@ tradeSideToggle?.addEventListener("click", (e) => {
   tradeSideToggle.querySelectorAll(".segmented-btn").forEach((b) => {
     b.classList.toggle("active", b === btn);
   });
+  syncBuyModeUi();
   refreshCatalog();
 });
 
@@ -504,6 +600,7 @@ async function boot() {
   try {
     registerFinancialCharts();
     initClient();
+    syncBuyModeUi();
     if (dateEnd) dateEnd.value = taipeiToday();
     syncDateInputsFromPreset();
     await refreshCatalog();
