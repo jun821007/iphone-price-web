@@ -531,6 +531,45 @@ function ipadBaseModelName(row) {
   return name.replace(/\s*(WiFi|LTE)\s*$/i, "").trim();
 }
 
+function isWatchAccessoryRow(row) {
+  const key = (row.model_key || "");
+  if (/^(S11|SE|Ultra)/i.test(key)) return true;
+  return inferDeviceType(row) === "wearable";
+}
+
+function watchConnectionFromKey(modelKey) {
+  const key = String(modelKey || "");
+  if (/LTE/i.test(key)) return "LTE";
+  if (/GPS/i.test(key)) return "GPS";
+  return "";
+}
+
+function watchBaseModelLabel(row) {
+  const fromFields = `${row.model || ""} ${row.capacity || ""}`.trim();
+  if (fromFields) return fromFields.replace(/\s*(GPS|LTE)\s*$/i, "").trim();
+  const key = (row.model_key || "").replace(/(GPS|LTE).*/i, "").trim();
+  return key || row.model_key || "";
+}
+
+function watchRowModelLabel(row) {
+  if (!isWatchAccessoryRow(row)) {
+    return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+  }
+  const base = watchBaseModelLabel(row);
+  const conn = watchConnectionFromKey(row.model_key)
+    || (/\bLTE\b/i.test(row.model || "") ? "LTE" : "")
+    || (/\bGPS\b/i.test(row.model || "") ? "GPS" : "");
+  if (conn) return `${base} ${conn}`;
+  if (/^(S11|SE|Ultra)/i.test(row.model_key || "")) return `${base} GPS`;
+  return base || row.model_key || "—";
+}
+
+function rowModelLabel(row) {
+  if (row.category === "new_ipad") return ipadRowModelLabel(row);
+  if (isWatchAccessoryRow(row)) return watchRowModelLabel(row);
+  return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+}
+
 function ipadRowModelLabel(row) {
   if (row.category !== "new_ipad") {
     return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
@@ -546,12 +585,18 @@ function modelGroupKey(row) {
   if (row.category === "new_ipad") {
     return ipadBaseModelName(row).toLowerCase();
   }
+  if (isWatchAccessoryRow(row)) {
+    return watchBaseModelLabel(row).toLowerCase();
+  }
   return (row.model || splitModelKey(row.model_key).model || row.model_key || "").toLowerCase();
 }
 
 function modelGroupLabel(row) {
   if (row.category === "new_ipad") {
     return ipadBaseModelName(row) || "—";
+  }
+  if (isWatchAccessoryRow(row)) {
+    return watchBaseModelLabel(row) || "—";
   }
   return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
 }
@@ -627,7 +672,7 @@ function renderBuyDemandList(rows) {
     });
     const rowsHtml = groupRows.map((row) => {
       const index = rows.indexOf(row);
-      const modelLabel = ipadRowModelLabel(row);
+      const modelLabel = rowModelLabel(row);
       const specBadge = row.spec_clear
         ? ""
         : '<span class="spec-unclear-tag">規格未明</span>';
@@ -748,7 +793,7 @@ function renderCompactPriceList(rows) {
     });
     const rowsHtml = sortedRows.map((row) => {
       const index = rows.indexOf(row);
-      const modelLabel = ipadRowModelLabel(row);
+      const modelLabel = rowModelLabel(row);
       return `
       <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
         <span class="compact-model">${modelLabel}</span>
@@ -859,7 +904,7 @@ async function openDetailPanel(row) {
   const classifyDetails = document.querySelector(".detail-classify-details");
   if (classifyDetails) classifyDetails.open = false;
   setClassifyStatus("");
-  const label = [ipadRowModelLabel(row), row.capacity, row.color].filter(Boolean).join(" ");
+  const label = [rowModelLabel(row), row.capacity, row.color].filter(Boolean).join(" ");
   detailTitle.textContent = label || row.model_key;
   const specNote = isBuy && row.spec_clear === false ? " · 規格未明" : "";
   detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${isBuy ? "買單徵收" : "賣單"} · ${row.model_key}${specNote}`;
