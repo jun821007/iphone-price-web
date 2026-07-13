@@ -1,4 +1,4 @@
-const CATEGORY_LABELS = { new: "新機", new_ipad: "iPad", accessory: "配件", used: "二手" };
+const CATEGORY_LABELS = { new: "新機", new_ipad: "iPad", android: "Android", accessory: "配件", used: "二手" };
 const MARKET_LABELS = {
   "": "全部",
   new: "全新",
@@ -152,6 +152,7 @@ function inferCondition(row) {
 function inferDeviceType(row) {
   if (row.device_type) return row.device_type;
   if (row.category === "new_ipad") return "tablet";
+  if (row.category === "android") return "phone";
   if (row.category === "accessory") return "accessory";
   if (row.category === "used") {
     const key = String(row.model_key || row.model || "").toLowerCase();

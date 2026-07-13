@@ -23,6 +23,7 @@ const CATEGORY_OPTIONS = [
   { value: "new", label: "新機" },
   { value: "used", label: "二手" },
   { value: "new_ipad", label: "iPad" },
+  { value: "android", label: "Android" },
   { value: "accessory", label: "配件" },
 ];
 

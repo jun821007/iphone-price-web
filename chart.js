@@ -1,4 +1,4 @@
-const CATEGORY_LABELS = { new: "新機", new_ipad: "iPad", accessory: "配件", used: "二手" };
+const CATEGORY_LABELS = { new: "新機", new_ipad: "iPad", android: "Android", accessory: "配件", used: "二手" };
 const TIMEZONE = "Asia/Taipei";
 const MAX_MODELS = 10;
 const LINE_COLORS = [
