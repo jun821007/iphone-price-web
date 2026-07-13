@@ -85,10 +85,35 @@ python -m http.server 8080
 
 ---
 
-## 發佈前確認
+## config 怎麼用（本機 vs Netlify）
 
-- Supabase 已執行 `supabase_migration_v5_discount.sql`
-- 本機 `config.js` 是正式 Supabase URL / anon key
+| 檔案 | 是否進 git | 用途 |
+|------|------------|------|
+| [config.example.js](config.example.js) | ✅ 會 | 範本；新增表名時更新這裡 |
+| `config.js` | ❌ 不進（`.gitignore`） | 本機正式金鑰，只留在電腦 |
+| [scripts/netlify-build.sh](scripts/netlify-build.sh) | ✅ 會 | Netlify 部署時**自動產生** `config.js` |
+
+### 本機第一次（或換電腦）
+
+```powershell
+cd C:\Users\rsz97\iphone-price-web
+copy config.example.js config.js
+```
+
+用編輯器開 `config.js`，把 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 改成 Supabase 後台的真實值（與 [config.js](file:///C:/Users/rsz97/iphone-price-web/config.js) 現有一致即可）。
+
+### 新增資料表名時（例如 v7 徵收熱度）
+
+1. 已更新 [config.example.js](config.example.js) 與 [netlify-build.sh](scripts/netlify-build.sh)。
+2. **本機**：對照 `config.example.js`，在**你的** `config.js` 補上缺少的 `window.SUPABASE_*` 行（URL / anon key **不用改**）。
+3. **Netlify**：不必改環境變數；下次 `git push` 重新部署時 build script 會帶上新表名。
+
+> 若 `config.js` 暫時沒補新表名，`app.js` / `admin.js` / `chart.js` 內建 fallback 仍會用 `buy_demand_ticks` / `buy_demand_pending`；補上只是與範本保持一致。
+
+---
+
+- Supabase 已執行 `supabase_migration_v7_buy_demand.sql`（徵收熱度表；舊環境至少需 v5）
+- 本機 `config.js` 是正式 Supabase URL / anon key（見下方「config 怎麼用」）
 - Netlify 環境變數已設 `SUPABASE_URL`、`SUPABASE_ANON_KEY`
 - 手機 `run.py` 已更新到最新版並重跑
 - 瀏覽器 Ctrl+F5 或清除站台資料，避免舊 service worker 快取
