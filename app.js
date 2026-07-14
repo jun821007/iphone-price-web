@@ -677,8 +677,8 @@ function renderBuyDemandList(rows) {
       return `
       <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
         <span class="compact-model">${modelLabel}${specBadge}</span>
-        <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
+        <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-price compact-demand-count"><span class="compact-count">×${row.seeker_count || 0}</span> 人</span>
         <span class="compact-discount-low muted">—</span>
       </div>`;
@@ -692,7 +692,7 @@ function renderBuyDemandList(rows) {
       </summary>
       <div class="model-group-body">
         <div class="compact-row compact-header compact-header--buy">
-          <span>型號</span><span>顏色</span><span>容量</span><span>徵收人數</span><span></span>
+          <span>型號</span><span>容量</span><span>顏色</span><span>徵收人數</span><span></span>
         </div>
         ${rowsHtml}
       </div>
@@ -795,8 +795,8 @@ function renderCompactPriceList(rows) {
       return `
       <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
         <span class="compact-model">${modelLabel}</span>
-        <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
+        <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-price">${formatMaybePrice(row.top_price)}<span class="compact-count">×${topPriceQuoteCount(row)}</span></span>
         <span class="compact-discount-low">${lowestDiscountLabelForRow(row)}</span>
       </div>`;
@@ -810,7 +810,7 @@ function renderCompactPriceList(rows) {
       </summary>
       <div class="model-group-body">
         <div class="compact-row compact-header">
-          <span>型號</span><span>顏色</span><span>容量</span><span>價格</span><span>最低折</span>
+          <span>型號</span><span>容量</span><span>顏色</span><span>價格</span><span>最低折</span>
         </div>
         ${rowsHtml}
       </div>
