@@ -1216,8 +1216,37 @@ tbody tr:hover {
 .header-nav {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.header-nav .admin-link,
+.admin-header-left .admin-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.header-nav .admin-link:hover,
+.admin-header-left .admin-link:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: var(--accent-dark);
+}
+
+.header-nav .admin-link:active,
+.admin-header-left .admin-link:active {
+  background: #f1f5f9;
 }
 
 .chart-page-title {
