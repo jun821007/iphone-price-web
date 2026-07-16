@@ -86,6 +86,9 @@ let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
 let catalogByCategory = {};
 let modelCatalogLoaded = false;
+/** @type {Map<string, { min: number, max: number, minCount: number, maxCount: number, period: 'this-week'|'last-week' }>} */
+let usedWeeklyRangeByModelKey = new Map();
+let usedWeeklyRangeCacheKey = "";
 
 function table(name) {
   const value = window[name];
@@ -123,6 +126,127 @@ function formatPrice(price) {
 
 function formatMaybePrice(price) {
   return price != null ? formatPrice(price) : "—";
+}
+
+function addDaysIso(isoDate, delta) {
+  const d = new Date(`${isoDate}T12:00:00+08:00`);
+  d.setDate(d.getDate() + delta);
+  return d.toLocaleDateString("en-CA", { timeZone: TIMEZONE });
+}
+
+/** 含 referenceDate 的日曆週（週一～週日，台北時區） */
+function calendarWeekContaining(referenceDate) {
+  const weekdays = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone: TIMEZONE, weekday: "short" })
+    .format(new Date(`${referenceDate}T12:00:00+08:00`));
+  const dayIndex = weekdays[wd] ?? 0;
+  const weekStart = addDaysIso(referenceDate, -dayIndex);
+  const weekEnd = addDaysIso(weekStart, 6);
+  return { weekStart, weekEnd };
+}
+
+function aggregateUsedWeeklyRanges(ticks) {
+  const byModel = new Map();
+  for (const t of ticks || []) {
+    if (t.price == null) continue;
+    const modelKey = (t.model_key || "").trim();
+    if (!modelKey) continue;
+    const price = Number(t.price);
+    if (!Number.isFinite(price)) continue;
+    if (!byModel.has(modelKey)) {
+      byModel.set(modelKey, { pricePeople: new Map() });
+    }
+    const bucket = byModel.get(modelKey);
+    if (!bucket.pricePeople.has(price)) bucket.pricePeople.set(price, new Set());
+    bucket.pricePeople.get(price).add(personKeyFromTick(t));
+  }
+
+  const result = new Map();
+  for (const [modelKey, bucket] of byModel) {
+    const prices = [...bucket.pricePeople.keys()];
+    if (!prices.length) continue;
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    result.set(modelKey, {
+      min,
+      max,
+      minCount: bucket.pricePeople.get(min)?.size ?? 0,
+      maxCount: bucket.pricePeople.get(max)?.size ?? 0,
+    });
+  }
+  return result;
+}
+
+async function loadUsedWeeklyPriceRanges(selectedDate) {
+  if (!selectedDate || !supabaseClient) return new Map();
+  if (usedWeeklyRangeCacheKey === selectedDate) {
+    return usedWeeklyRangeByModelKey;
+  }
+
+  const { weekStart, weekEnd } = calendarWeekContaining(selectedDate);
+  const lastWeekStart = addDaysIso(weekStart, -7);
+  const lastWeekEnd = addDaysIso(weekStart, -1);
+  const ticksTable = table("SUPABASE_TICKS_TABLE");
+
+  const selectCols = "model_key,price,from_mid,sender_name,quoted_at";
+  const [thisWeekRes, lastWeekRes] = await Promise.all([
+    supabaseClient
+      .from(ticksTable)
+      .select(selectCols)
+      .eq("category", "used")
+      .eq("trade_side", "sell")
+      .gte("quote_date", weekStart)
+      .lte("quote_date", weekEnd)
+      .limit(15000),
+    supabaseClient
+      .from(ticksTable)
+      .select(selectCols)
+      .eq("category", "used")
+      .eq("trade_side", "sell")
+      .gte("quote_date", lastWeekStart)
+      .lte("quote_date", lastWeekEnd)
+      .limit(15000),
+  ]);
+
+  if (thisWeekRes.error && thisWeekRes.error.code !== "42P01") throw thisWeekRes.error;
+  if (lastWeekRes.error && lastWeekRes.error.code !== "42P01") throw lastWeekRes.error;
+
+  const thisWeekMap = aggregateUsedWeeklyRanges(thisWeekRes.data || []);
+  const lastWeekMap = aggregateUsedWeeklyRanges(lastWeekRes.data || []);
+  const merged = new Map();
+
+  const allKeys = new Set([...thisWeekMap.keys(), ...lastWeekMap.keys()]);
+  for (const modelKey of allKeys) {
+    if (thisWeekMap.has(modelKey)) {
+      merged.set(modelKey, { ...thisWeekMap.get(modelKey), period: "this-week" });
+    } else if (lastWeekMap.has(modelKey)) {
+      merged.set(modelKey, { ...lastWeekMap.get(modelKey), period: "last-week" });
+    }
+  }
+
+  usedWeeklyRangeCacheKey = selectedDate;
+  usedWeeklyRangeByModelKey = merged;
+  return merged;
+}
+
+function formatUsedWeeklyRangeHtml(modelKey) {
+  const info = usedWeeklyRangeByModelKey.get((modelKey || "").trim());
+  if (!info) return '<span class="muted">—</span>';
+
+  let rangeHtml;
+  if (info.min === info.max) {
+    rangeHtml = `${formatPrice(info.min)}<span class="compact-count">×${info.minCount}</span>`;
+  } else {
+    rangeHtml = `${formatPrice(info.min)}<span class="compact-count">×${info.minCount}</span><span class="weekly-range-sep">~</span>${formatPrice(info.max)}<span class="compact-count">×${info.maxCount}</span>`;
+  }
+
+  const periodTag = info.period === "last-week" ? '<span class="weekly-period-tag">上週</span>' : "";
+  const cls = info.period === "last-week" ? "used-weekly-range used-weekly-range--prev" : "used-weekly-range";
+  return `<span class="${cls}">${rangeHtml}${periodTag}</span>`;
+}
+
+function isUsedSellWeeklyView() {
+  return activeCategory === "used" && activeTradeSide === "sell";
 }
 
 function parseTimestamp(value) {
@@ -488,7 +612,7 @@ async function saveClassification(row) {
 
   populateClassifyForm(row);
   setClassifyStatus("已儲存分類（含當日 quote_ticks）", "ok");
-  applyFilters();
+  applyFilters().catch((e) => setPriceViewMessage(e.message, "error"));
 }
 
 function tradeSideTag(side) {
@@ -766,10 +890,14 @@ function topPriceQuoteCount(row) {
 
 function renderCompactPriceList(rows) {
   if (!compactPriceList) return;
+  const usedWeekly = isUsedSellWeeklyView();
+  compactPriceList.classList.toggle("compact-list--used-weekly", usedWeekly);
   if (!rows.length) {
     compactPriceList.innerHTML = '<div class="compact-empty muted">這個分類今天沒有資料</div>';
     return;
   }
+
+  const fifthHeader = usedWeekly ? "本週行情" : "最低折";
 
   const groups = new Map();
   for (const row of rows) {
@@ -792,13 +920,16 @@ function renderCompactPriceList(rows) {
     const rowsHtml = sortedRows.map((row) => {
       const index = rows.indexOf(row);
       const modelLabel = rowModelLabel(row);
+      const fifthCell = usedWeekly
+        ? formatUsedWeeklyRangeHtml(row.model_key)
+        : lowestDiscountLabelForRow(row);
       return `
       <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
         <span class="compact-model">${modelLabel}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
         <span class="compact-color">${row.color || "—"}</span>
         <span class="compact-price">${formatMaybePrice(row.top_price)}<span class="compact-count">×${topPriceQuoteCount(row)}</span></span>
-        <span class="compact-discount-low">${lowestDiscountLabelForRow(row)}</span>
+        <span class="compact-discount-low">${fifthCell}</span>
       </div>`;
     }).join("");
 
@@ -810,7 +941,7 @@ function renderCompactPriceList(rows) {
       </summary>
       <div class="model-group-body">
         <div class="compact-row compact-header">
-          <span>型號</span><span>容量</span><span>顏色</span><span>價格</span><span>最低折</span>
+          <span>型號</span><span>容量</span><span>顏色</span><span>價格</span><span>${fifthHeader}</span>
         </div>
         ${rowsHtml}
       </div>
@@ -1543,7 +1674,7 @@ function mergeSenderQuoteCounts(senderRows, ticks) {
     .sort((a, b) => (b.quote_count || 0) - (a.quote_count || 0));
 }
 
-function applyFilters() {
+async function applyFilters() {
   const selectedDate = dateSelect.value;
   const sourceRows = activeTradeSide === "buy" ? allBuyDemandRows : allRows;
   const filtered = sortRowsForView(sourceRows.filter((row) => {
@@ -1552,6 +1683,20 @@ function applyFilters() {
     return true;
   }));
   window.filteredRows = filtered;
+
+  if (isUsedSellWeeklyView() && selectedDate) {
+    try {
+      await loadUsedWeeklyPriceRanges(selectedDate);
+    } catch (error) {
+      usedWeeklyRangeByModelKey = new Map();
+      usedWeeklyRangeCacheKey = "";
+      console.error(error);
+    }
+  } else {
+    usedWeeklyRangeByModelKey = new Map();
+    usedWeeklyRangeCacheKey = "";
+  }
+
   renderPriceView(filtered);
   renderSummary(filtered, selectedDate);
   updateLastUpdated(latestSyncTime, selectedDate);
@@ -1581,7 +1726,7 @@ function setActiveCategory(category) {
     btn.classList.toggle("active", on);
     btn.setAttribute("aria-selected", on ? "true" : "false");
   });
-  applyFilters();
+  applyFilters().catch((e) => setPriceViewMessage(e.message, "error"));
 }
 
 async function loadAvailableDates() {
@@ -1634,7 +1779,7 @@ async function loadRowsForDate(selectedDate) {
     if (!allBuyDemandRows.length) {
       setPriceViewMessage("今天尚無徵收需求資料（請確認已執行 migration v7 並重跑 run.py）");
     } else {
-      applyFilters();
+      await applyFilters();
     }
     updateLastUpdated(latestSyncTime, selectedDate);
     return;
@@ -1662,7 +1807,7 @@ async function loadRowsForDate(selectedDate) {
       setPriceViewMessage("這個分類今天沒有資料");
     }
   } else {
-    applyFilters();
+    await applyFilters();
   }
   updateLastUpdated(latestSyncTime, selectedDate);
 }
@@ -1720,7 +1865,7 @@ if (modelLeaderboard) {
 if (marketFilter) {
   marketFilter.addEventListener("change", () => {
     activeMarketFilter = marketFilter.value;
-    applyFilters();
+    applyFilters().catch((e) => setPriceViewMessage(e.message, "error"));
   });
 }
 
