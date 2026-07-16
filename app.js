@@ -825,6 +825,47 @@ function renderPriceView(rows) {
   } else {
     renderCompactPriceList(rows);
   }
+  applyModelGroupsExpandState();
+}
+
+/** null = 依 HTML 預設；true/false = 使用者按過全展開/收折 */
+let modelGroupsExpandPreference = null;
+
+function applyModelGroupsExpandState() {
+  if (!compactPriceList) return;
+  const groups = compactPriceList.querySelectorAll("details.model-group");
+  if (modelGroupsExpandPreference !== null) {
+    groups.forEach((el) => {
+      el.open = modelGroupsExpandPreference;
+    });
+  }
+  updateExpandAllButtonLabel();
+}
+
+function updateExpandAllButtonLabel() {
+  const btn = document.getElementById("expandAllBtn");
+  if (!btn) return;
+  const groups = compactPriceList?.querySelectorAll("details.model-group") || [];
+  if (!groups.length) {
+    btn.disabled = true;
+    btn.textContent = "全展開";
+    return;
+  }
+  btn.disabled = false;
+  const allOpen = [...groups].every((g) => g.open);
+  btn.textContent = allOpen ? "收折" : "全展開";
+  btn.setAttribute("aria-expanded", allOpen ? "true" : "false");
+}
+
+function toggleAllModelGroups() {
+  const groups = [...(compactPriceList?.querySelectorAll("details.model-group") || [])];
+  if (!groups.length) return;
+  const expand = !groups.every((g) => g.open);
+  modelGroupsExpandPreference = expand;
+  groups.forEach((el) => {
+    el.open = expand;
+  });
+  updateExpandAllButtonLabel();
 }
 
 function setPriceViewMessage(message, type = "muted") {
@@ -1139,7 +1180,8 @@ function renderSummary(rows, selectedDate) {
   const extra = activeTradeSide === "buy" && totalSeekers
     ? ` · 合計 <strong>${totalSeekers}</strong> 人次（同人同規格只算 1）`
     : "";
-  summary.innerHTML = `<div class="summary-badge">${label} · ${sideLabel}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個型號規格${extra}</div>`;
+  summary.innerHTML = `<div class="summary-badge">${label} · ${sideLabel}</div><div class="summary-text"><strong>${selectedDate}</strong> 共 <strong>${rows.length}</strong> 個型號規格${extra}</div><button type="button" id="expandAllBtn" class="btn-expand-all" aria-expanded="false">全展開</button>`;
+  updateExpandAllButtonLabel();
 }
 
 function formatSenderDisplay(row) {
@@ -1725,6 +1767,19 @@ if (compactPriceList) {
     if (!rowEl) return;
     event.preventDefault();
     openRowDetailFromIndex(Number(rowEl.dataset.rowIndex));
+  });
+  compactPriceList.addEventListener("toggle", (event) => {
+    if (event.target.classList?.contains("model-group")) {
+      updateExpandAllButtonLabel();
+    }
+  }, true);
+}
+
+if (summary) {
+  summary.addEventListener("click", (event) => {
+    if (event.target.id === "expandAllBtn") {
+      toggleAllModelGroups();
+    }
   });
 }
 

@@ -140,7 +140,38 @@ input {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
   font-size: 0.95rem;
+}
+
+.summary-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.btn-expand-all {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #16a34a;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(22, 163, 74, 0.35);
+}
+
+.btn-expand-all:hover {
+  background: #15803d;
+}
+
+.btn-expand-all:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .summary-badge.market-badge {
@@ -161,10 +192,6 @@ input {
   padding: 6px 14px;
   border-radius: 999px;
   font-size: 0.9rem;
-}
-
-.summary-text {
-  line-height: 1.5;
 }
 
 .table-wrap {
