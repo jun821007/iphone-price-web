@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a2744" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="二手行情" />
+  <title>二手行情 · 報價查詢</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <div class="page used-page">
+    <header class="header">
+      <h1 class="chart-page-title">二手行情</h1>
+      <nav class="header-nav">
+        <a class="admin-link" href="index.html">報價查詢</a>
+        <a class="admin-link" href="chart.html">價格走勢</a>
+        <a class="admin-link" href="admin.html">審計後台</a>
+      </nav>
+    </header>
+
+    <section class="card used-toolbar">
+      <div class="used-week-nav">
+        <button type="button" id="weekPrevBtn" class="btn-secondary btn-sm" aria-label="上一週">‹ 上一週</button>
+        <div class="used-week-label-wrap">
+          <strong id="weekLabel">—</strong>
+          <span id="weekHint" class="muted used-week-hint">日曆週 · 賣單</span>
+        </div>
+        <button type="button" id="weekNextBtn" class="btn-secondary btn-sm" aria-label="下一週">下一週 ›</button>
+        <button type="button" id="weekTodayBtn" class="btn-secondary btn-sm">本週</button>
+      </div>
+      <div class="used-filter-row">
+        <input id="modelSearch" type="search" class="chart-model-search" placeholder="搜尋型號，例如 13pro、iPad9…" />
+        <button type="button" id="expandAllBtn" class="btn-expand-all">全展開</button>
+      </div>
+      <p id="usedStatus" class="muted used-status" aria-live="polite">載入中…</p>
+    </section>
+
+    <section class="card table-wrap">
+      <div id="usedPriceList" class="compact-price-list compact-list--used-market"></div>
+    </section>
+  </div>
+
+  <script src="used.js?v=1"></script>
+</body>
+</html>
