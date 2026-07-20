@@ -28,7 +28,7 @@
         <button type="button" id="weekPrevBtn" class="btn-secondary btn-sm" aria-label="上一週">‹ 上一週</button>
         <div class="used-week-label-wrap">
           <strong id="weekLabel">—</strong>
-          <span id="weekHint" class="muted used-week-hint">日曆週 · 賣單</span>
+          <span id="weekHint" class="muted used-week-hint">基準週 · 沒資料往回推 · 賣單</span>
         </div>
         <button type="button" id="weekNextBtn" class="btn-secondary btn-sm" aria-label="下一週">下一週 ›</button>
         <button type="button" id="weekTodayBtn" class="btn-secondary btn-sm">本週</button>
@@ -45,6 +45,19 @@
     </section>
   </div>
 
-  <script src="used.js?v=1"></script>
+  <dialog id="usedQuoteModal" class="detail-modal">
+    <div class="detail-panel">
+      <header class="detail-header">
+        <div>
+          <h2 id="usedQuoteTitle" class="detail-title">—</h2>
+          <p id="usedQuoteSubtitle" class="detail-subtitle muted"></p>
+        </div>
+        <button type="button" id="usedQuoteClose" class="btn-secondary detail-close" aria-label="關閉">✕</button>
+      </header>
+      <div id="usedQuoteList" class="used-quote-list"></div>
+    </div>
+  </dialog>
+
+  <script src="used.js?v=2"></script>
 </body>
 </html>

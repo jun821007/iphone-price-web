@@ -1629,6 +1629,102 @@ body.mode-buy-demand .detail-classify {
   margin-top: 1px;
 }
 
+.used-spec-block {
+  border-top: 1px solid var(--border);
+}
+
+.used-spec-block .used-market-row {
+  border-top: none;
+}
+
+.used-price-btn {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: right;
+}
+
+.used-price-btn:hover,
+.used-price-btn:focus-visible {
+  border-color: #86efac;
+  background: #f0fdf4;
+  outline: none;
+}
+
+.used-weekly-range--prev .used-price-btn:hover,
+.used-weekly-range--prev .used-price-btn:focus-visible {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.used-price-date {
+  margin-left: 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.used-shift-list {
+  margin: 0;
+  padding: 4px 14px 10px 30px;
+  list-style: none;
+  font-size: 0.75rem;
+  color: #9a3412;
+  background: #fff7ed;
+}
+
+.used-shift-list li {
+  padding: 2px 0;
+  line-height: 1.4;
+}
+
+.used-shift-week {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.used-quote-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.used-quote-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.used-quote-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.used-quote-raw {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
 @media (max-width: 640px) {
   .compact-list--used-market .used-market-row {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 1.25fr);
@@ -1638,6 +1734,11 @@ body.mode-buy-demand .detail-classify {
   .used-weekly-range {
     font-size: 0.74rem;
     white-space: normal;
+  }
+
+  .used-shift-list {
+    padding-left: 22px;
+    font-size: 0.7rem;
   }
 }
 
