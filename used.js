@@ -520,20 +520,27 @@ function openPriceQuotes(modelKey, side) {
   const sorted = [...ticks].sort((a, b) => String(b.quoted_at || b.quote_date || "").localeCompare(String(a.quoted_at || a.quote_date || "")));
   if (usedQuoteList) {
     if (!sorted.length) {
-      usedQuoteList.innerHTML = '<p class="muted">沒有原文資料</p>';
+      usedQuoteList.innerHTML = '<p class="muted">沒有報價列</p>';
     } else {
       usedQuoteList.innerHTML = sorted.map((t) => {
-        const who = (t.sender_name || "").trim() || `未知(${(t.from_mid || "").slice(-8) || "—"})`;
-        const group = (t.chat_name || "").trim() || "—";
-        const line = (t.raw_line || "").trim() || "—";
+        const mid = (t.from_mid || "").trim();
+        const midShort = mid ? mid.slice(-8) : "";
+        const who = (t.sender_name || "").trim() || (midShort ? `未知(${midShort})` : "未知");
+        const group = (t.chat_name || "").trim();
+        const line = (t.raw_line || "").trim();
+        const when = formatTickWhen(t);
+        const metaBits = [
+          escapeHtml(when),
+          escapeHtml(who),
+          escapeHtml(group || "群組未知"),
+        ].join(" · ");
+        const body = line
+          ? `<pre class="used-quote-raw">${escapeHtml(line)}</pre>`
+          : `<p class="used-quote-missing muted">此筆無原文（歷史缺欄）。若 LINE 訊息仍在，更新 run.py 後重跑可回填；訊息已不在則無法還原。</p>`;
         return `
-        <article class="used-quote-card">
-          <div class="used-quote-meta">
-            <span>${escapeHtml(formatTickWhen(t))}</span>
-            <span>${escapeHtml(who)}</span>
-            <span class="muted">${escapeHtml(group)}</span>
-          </div>
-          <pre class="used-quote-raw">${escapeHtml(line)}</pre>
+        <article class="used-quote-card${line ? "" : " used-quote-card--missing"}">
+          <div class="used-quote-meta">${metaBits}</div>
+          ${body}
         </article>`;
       }).join("");
     }

@@ -1725,6 +1725,17 @@ body.mode-buy-demand .detail-classify {
   color: var(--text);
 }
 
+.used-quote-card--missing {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.used-quote-missing {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 @media (max-width: 640px) {
   .compact-list--used-market .used-market-row {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 1.25fr);
