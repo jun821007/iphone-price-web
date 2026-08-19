@@ -999,7 +999,8 @@ async function openDetailPanel(row) {
     .select("quoted_at,quote_date,price,discount_zhe,chat_name,sender_name,from_mid,raw_line")
     .eq("category", row.category)
     .eq("model_key", row.model_key)
-    .eq("trade_side", row.trade_side || "sell");
+    .eq("trade_side", row.trade_side || "sell")
+    .eq("excluded", false);
   if (selectedDate) {
     tickQuery = tickQuery.eq("quote_date", selectedDate);
   }
@@ -1252,7 +1253,7 @@ async function loadTradeMessages({ isBuy, selectedDate, fromMid, modelKey, categ
     : "quoted_at,message_id,chat_name,sender_name,from_mid,category,model_key,model,capacity,color,price,trade_side";
   let query = supabaseClient.from(sourceTable).select(columns);
   if (selectedDate) query = query.eq("quote_date", selectedDate);
-  if (!isBuy) query = query.eq("trade_side", "sell");
+  if (!isBuy) { query = query.eq("trade_side", "sell").eq("excluded", false); }
   if (fromMid) query = query.eq("from_mid", fromMid);
   if (modelKey) query = query.eq("model_key", modelKey);
   if (category) query = query.eq("category", category);
@@ -1387,6 +1388,7 @@ async function loadDashboard(selectedDate) {
       .select("category,model_key,trade_side,price,discount_zhe,from_mid,sender_name")
       .eq("quote_date", selectedDate)
       .eq("trade_side", "sell")
+      .eq("excluded", false)
       .limit(10000);
 
   const [

@@ -222,6 +222,7 @@ async function loadCatalogModels() {
     .select("model_key,model,capacity,color,category")
     .eq("category", activeCategory)
     .eq("trade_side", activeTradeSide)
+    .eq("excluded", false)
     .gte("quote_date", start)
     .lte("quote_date", end)
     .limit(8000);
@@ -482,6 +483,7 @@ async function fetchTicksForModels(modelKeys, start, end) {
     .select("quote_date,quoted_at,price,from_mid,sender_name,model_key")
     .eq("category", activeCategory)
     .eq("trade_side", activeTradeSide)
+    .eq("excluded", false)
     .in("model_key", modelKeys)
     .gte("quote_date", start)
     .lte("quote_date", end)
