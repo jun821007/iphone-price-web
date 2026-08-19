@@ -14,16 +14,14 @@ const USED_CATALOG_KEYS = [
 
 const TIMEZONE = "Asia/Taipei";
 const CAPACITY_RANK = { "64": 1, "128": 2, "256": 3, "512": 4, "1T": 5, "2T": 6, WiFi: 10, LTE: 11 };
-const SHIFT_THRESHOLD = 500;
-const MAX_SHIFTS_SHOWN = 5;
 const TICK_PAGE = 1000;
 const CATALOG_KEY_SET = new Set(USED_CATALOG_KEYS);
 
-const weekPrevBtn = document.getElementById("weekPrevBtn");
-const weekNextBtn = document.getElementById("weekNextBtn");
-const weekTodayBtn = document.getElementById("weekTodayBtn");
-const weekLabel = document.getElementById("weekLabel");
-const weekHint = document.getElementById("weekHint");
+const monthPrevBtn = document.getElementById("weekPrevBtn");
+const monthNextBtn = document.getElementById("weekNextBtn");
+const monthTodayBtn = document.getElementById("weekTodayBtn");
+const monthLabel = document.getElementById("weekLabel");
+const monthHint = document.getElementById("weekHint");
 const modelSearch = document.getElementById("modelSearch");
 const expandAllBtn = document.getElementById("expandAllBtn");
 const usedStatus = document.getElementById("usedStatus");
@@ -35,24 +33,26 @@ const usedQuoteList = document.getElementById("usedQuoteList");
 const usedQuoteClose = document.getElementById("usedQuoteClose");
 
 let supabaseClient = null;
-/** 基準週週一 YYYY-MM-DD */
-let weekStart = "";
-/** 全部歷史 ticks（catalog 內、賣單） */
+/** 基準月 YYYY-MM */
+let monthStart = "";
+/** 全部歷史 ticks（catalog 內、賣單、excluded=false） */
 let allTicks = [];
 /**
- * @type {Map<string, {
- *   min: number, max: number,
- *   minCount: number, maxCount: number,
- *   minDate: string, maxDate: string,
- *   sourceWeekStart: string, sourceWeekEnd: string,
- *   isLookback: boolean,
- *   minTicks: object[], maxTicks: object[],
- *   shifts: object[],
- * }>}
+ * model_key → 當月所有 ticks（陣列，排序由新到舊）
+ * @type {Map<string, object[]>}
  */
-let rangeByModelKey = new Map();
+let ticksByModel = new Map();
 /** null = 預設收合；true/false = 使用者按過全展開/收折 */
 let expandPreference = null;
+/** 當前開啟 modal 的 modelKey */
+let openModelKey = null;
+
+/**
+ * admin 模式：URL 帶 ?admin=1 時啟用剔除按鈕。
+ * 剔除需要 service_role key 或 RLS policy 允許 update excluded。
+ * 這裡使用同一個 anon key，需確認 Supabase RLS 允許 update excluded=true。
+ */
+window._usedExcludeHandler = null;
 
 function table(name) {
   const value = window[name];
@@ -62,12 +62,9 @@ function table(name) {
 }
 
 function ensureConfig() {
-  if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
-    throw new Error("請設定 config.js");
-  }
-  if (window.SUPABASE_URL.includes("你的專案") || window.SUPABASE_ANON_KEY.includes("你的anon")) {
+  if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) throw new Error("請設定 config.js");
+  if (window.SUPABASE_URL.includes("你的專案") || window.SUPABASE_ANON_KEY.includes("你的anon"))
     throw new Error("config.js 還是範例文字");
-  }
 }
 
 function initClient() {
@@ -79,23 +76,22 @@ function taipeiToday() {
   return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
 }
 
-function addDaysIso(isoDate, delta) {
-  const d = new Date(`${isoDate}T12:00:00+08:00`);
-  d.setDate(d.getDate() + delta);
-  return d.toLocaleDateString("en-CA", { timeZone: TIMEZONE });
+function currentMonth() {
+  return taipeiToday().slice(0, 7);
 }
 
-function calendarWeekContaining(referenceDate) {
-  const weekdays = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
-  const wd = new Intl.DateTimeFormat("en-US", { timeZone: TIMEZONE, weekday: "short" })
-    .format(new Date(`${referenceDate}T12:00:00+08:00`));
-  const dayIndex = weekdays[wd] ?? 0;
-  const start = addDaysIso(referenceDate, -dayIndex);
-  return { weekStart: start, weekEnd: addDaysIso(start, 6) };
+function addMonthsYM(ym, delta) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function currentWeekStart() {
-  return calendarWeekContaining(taipeiToday()).weekStart;
+function monthRangeIso(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const start = `${ym}-01`;
+  const next = new Date(y, m, 1);
+  const end = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
+  return { start, end };
 }
 
 function formatPrice(price) {
@@ -106,52 +102,22 @@ function formatMd(iso) {
   return (iso || "").slice(5);
 }
 
-function formatWeekLabel(start, end) {
-  return `${start.slice(0, 4)} ${formatMd(start)}～${formatMd(end)}`;
-}
-
-function formatMoneyDelta(delta) {
-  if (delta > 0) return `漲 ${formatPrice(delta)}`;
-  if (delta < 0) return `跌 ${formatPrice(Math.abs(delta))}`;
-  return "持平";
-}
-
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
+  return String(value ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
 }
 
 function parseCatalogEntry(modelKey) {
   const parts = modelKey.trim().split(/\s+/);
   const series = parts[0] || modelKey;
-  return {
-    model_key: modelKey,
-    series,
-    model: series,
-    capacity: parts[1] || "",
-    color: parts.slice(2).join(" ") || "",
-  };
+  return { model_key: modelKey, series, model: series, capacity: parts[1] || "", color: parts.slice(2).join(" ") || "" };
 }
 
 const CATALOG_ROWS = USED_CATALOG_KEYS.map(parseCatalogEntry);
 
 function capacityRank(cap) {
   return CAPACITY_RANK[String(cap || "").trim()] || 99;
-}
-
-function personKeyFromTick(t) {
-  return (t.from_mid || "").trim()
-    || (t.sender_name || "").trim()
-    || `${t.quoted_at || ""}|${t.raw_line || ""}`;
-}
-
-function tickDate(t) {
-  return String(t.quote_date || "").slice(0, 10);
 }
 
 function setStatus(text, kind = "") {
@@ -169,147 +135,76 @@ function filteredCatalog() {
   });
 }
 
-/** 從一組 ticks 算出最低／最高（人次、最近日期、該價全部原文 ticks） */
-function summarizeTicks(ticks) {
-  const pricePeople = new Map();
-  const priceTicks = new Map();
-  const priceLatestDate = new Map();
-
-  for (const t of ticks || []) {
-    if (t.price == null) continue;
-    const price = Number(t.price);
-    if (!Number.isFinite(price)) continue;
-    const day = tickDate(t);
-    if (!pricePeople.has(price)) {
-      pricePeople.set(price, new Set());
-      priceTicks.set(price, []);
-      priceLatestDate.set(price, day);
-    }
-    pricePeople.get(price).add(personKeyFromTick(t));
-    priceTicks.get(price).push(t);
-    if (day && day > (priceLatestDate.get(price) || "")) {
-      priceLatestDate.set(price, day);
-    }
-  }
-
-  const prices = [...pricePeople.keys()];
-  if (!prices.length) return null;
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  return {
-    min,
-    max,
-    minCount: pricePeople.get(min).size,
-    maxCount: pricePeople.get(max).size,
-    minDate: priceLatestDate.get(min) || "",
-    maxDate: priceLatestDate.get(max) || "",
-    minTicks: priceTicks.get(min) || [],
-    maxTicks: priceTicks.get(max) || [],
-  };
+function formatTickWhen(t) {
+  const raw = t.quoted_at || t.quote_date || "";
+  if (!raw) return "—";
+  const d = new Date(String(raw).trim().replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return String(raw).slice(0, 16);
+  return d.toLocaleString("zh-TW", {
+    timeZone: TIMEZONE, month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
 }
 
-/** model_key → weekStart → ticks[] */
-function groupTicksByModelWeek(ticks, untilDate) {
-  const byModel = new Map();
-  for (const t of ticks || []) {
-    const modelKey = (t.model_key || "").trim();
-    if (!CATALOG_KEY_SET.has(modelKey)) continue;
-    const day = tickDate(t);
-    if (!day || day > untilDate) continue;
-    if (t.price == null) continue;
-    const ws = calendarWeekContaining(day).weekStart;
-    if (!byModel.has(modelKey)) byModel.set(modelKey, new Map());
-    const weeks = byModel.get(modelKey);
-    if (!weeks.has(ws)) weeks.set(ws, []);
-    weeks.get(ws).push(t);
+function renderQuoteModal(modelKey) {
+  const ticks = ticksByModel.get(modelKey) || [];
+  const row = CATALOG_ROWS.find((r) => r.model_key === modelKey);
+  const title = [row?.model, row?.capacity, row?.color].filter(Boolean).join(" ") || modelKey;
+  if (usedQuoteTitle) usedQuoteTitle.textContent = title;
+  if (usedQuoteSubtitle) {
+    const cnt = ticks.length;
+    usedQuoteSubtitle.textContent = `${monthStart} · 共 ${cnt} 筆報價`;
   }
-  return byModel;
-}
-
-function buildWeeklyStats(weekTicks) {
-  const stats = summarizeTicks(weekTicks);
-  if (!stats) return null;
-  return {
-    min: stats.min,
-    max: stats.max,
-    minCount: stats.minCount,
-    maxCount: stats.maxCount,
-    tickCount: weekTicks.length,
-  };
-}
-
-function detectShifts(weeklyMap) {
-  const starts = [...weeklyMap.keys()].sort();
-  const shifts = [];
-  for (let i = 1; i < starts.length; i += 1) {
-    const prevStart = starts[i - 1];
-    const curStart = starts[i];
-    const prev = weeklyMap.get(prevStart);
-    const cur = weeklyMap.get(curStart);
-    if (!prev || !cur) continue;
-    const minDelta = cur.min - prev.min;
-    const maxDelta = cur.max - prev.max;
-    if (Math.abs(minDelta) < SHIFT_THRESHOLD && Math.abs(maxDelta) < SHIFT_THRESHOLD) continue;
-    shifts.push({
-      weekStart: curStart,
-      weekEnd: addDaysIso(curStart, 6),
-      prevWeekStart: prevStart,
-      prevMin: prev.min,
-      prevMax: prev.max,
-      min: cur.min,
-      max: cur.max,
-      minDelta,
-      maxDelta,
-    });
-  }
-  return shifts.reverse();
-}
-
-function buildRangeForModel(modelKey, byModelWeek, anchorWeekStart) {
-  const weeks = byModelWeek.get(modelKey);
-  if (!weeks || !weeks.size) return null;
-
-  const weekStarts = [...weeks.keys()].filter((ws) => ws <= anchorWeekStart).sort().reverse();
-  if (!weekStarts.length) return null;
-
-  const sourceWeekStart = weekStarts.includes(anchorWeekStart)
-    ? anchorWeekStart
-    : weekStarts[0];
-  const sourceTicks = weeks.get(sourceWeekStart) || [];
-  const summary = summarizeTicks(sourceTicks);
-  if (!summary) return null;
-
-  const weeklyStats = new Map();
-  for (const [ws, list] of weeks) {
-    if (ws > anchorWeekStart) continue;
-    const st = buildWeeklyStats(list);
-    if (st) weeklyStats.set(ws, st);
+  if (!usedQuoteList) return;
+  if (!ticks.length) {
+    usedQuoteList.innerHTML = '<p class="muted">本月無資料</p>';
+    return;
   }
 
-  return {
-    ...summary,
-    sourceWeekStart,
-    sourceWeekEnd: addDaysIso(sourceWeekStart, 6),
-    isLookback: sourceWeekStart !== anchorWeekStart,
-    shifts: detectShifts(weeklyStats).slice(0, MAX_SHIFTS_SHOWN),
-  };
+  const canExclude = typeof window._usedExcludeHandler === "function";
+  usedQuoteList.innerHTML = ticks.map((t) => {
+    const mid = (t.from_mid || "").trim();
+    const midShort = mid ? mid.slice(-8) : "";
+    const who = (t.sender_name || "").trim() || (midShort ? `未知(${midShort})` : "未知");
+    const group = (t.chat_name || "").trim();
+    const line = (t.raw_line || "").trim();
+    const when = formatTickWhen(t);
+    const priceStr = formatPrice(t.price);
+    const metaBits = [escapeHtml(when), escapeHtml(who), escapeHtml(group || "群組未知")].join(" · ");
+    const body = line
+      ? `<pre class="used-quote-raw">${escapeHtml(line)}</pre>`
+      : `<p class="used-quote-missing muted">此筆無原文（歷史缺欄）。若 LINE 訊息仍在，更新 run.py 後重跑可回填；訊息已不在則無法還原。</p>`;
+    const excludeBtn = canExclude
+      ? `<button type="button" class="btn-exclude" data-tick-id="${escapeHtml(String(t.id || ""))}" data-model-key="${escapeHtml(modelKey)}" title="標記此筆為錯誤並剔除">⊘ 剔除</button>`
+      : "";
+    return `
+    <article class="used-quote-card${line ? "" : " used-quote-card--missing"}" data-tick-id="${escapeHtml(String(t.id || ""))}">
+      <div class="used-quote-meta">
+        <span class="used-quote-price">$${escapeHtml(priceStr)}</span>
+        ${metaBits}
+        ${excludeBtn}
+      </div>
+      ${body}
+    </article>`;
+  }).join("");
 }
 
-function rebuildRanges() {
-  const weekEnd = addDaysIso(weekStart, 6);
-  const until = weekEnd > taipeiToday() ? taipeiToday() : weekEnd;
-  const byModelWeek = groupTicksByModelWeek(allTicks, until);
-  const merged = new Map();
-  for (const row of CATALOG_ROWS) {
-    const info = buildRangeForModel(row.model_key, byModelWeek, weekStart);
-    if (info) merged.set(row.model_key, info);
-  }
-  rangeByModelKey = merged;
+function openModelModal(modelKey) {
+  if (!usedQuoteModal) return;
+  openModelKey = modelKey;
+  renderQuoteModal(modelKey);
+  usedQuoteModal.showModal();
+}
+
+function closePriceQuotes() {
+  usedQuoteModal?.close();
+  openModelKey = null;
 }
 
 async function fetchAllUsedTicks() {
   const ticksTable = table("SUPABASE_TICKS_TABLE");
-  const selectCols = "model_key,price,quote_date,quoted_at,from_mid,sender_name,chat_name,raw_line";
+  const { start, end } = monthRangeIso(monthStart);
+  const selectCols = "id,model_key,price,quote_date,quoted_at,from_mid,sender_name,chat_name,raw_line";
   const collected = [];
   let from = 0;
 
@@ -319,8 +214,11 @@ async function fetchAllUsedTicks() {
       .select(selectCols)
       .eq("category", "used")
       .eq("trade_side", "sell")
+      .eq("excluded", false)
       .not("price", "is", null)
-      .order("quote_date", { ascending: false })
+      .gte("quote_date", start)
+      .lt("quote_date", end)
+      .order("quoted_at", { ascending: false })
       .range(from, from + TICK_PAGE - 1);
 
     if (error) {
@@ -339,49 +237,37 @@ async function fetchAllUsedTicks() {
   return collected;
 }
 
-function formatRangeHtml(modelKey, info) {
-  if (!info) return '<span class="muted">—</span>';
-
-  const minBtn = `<button type="button" class="used-price-btn" data-model-key="${escapeHtml(modelKey)}" data-side="min" title="查看最低價原文">${formatPrice(info.min)}<span class="compact-count">×${info.minCount}</span><span class="used-price-date">(${formatMd(info.minDate) || "—"})</span></button>`;
-  const maxBtn = `<button type="button" class="used-price-btn" data-model-key="${escapeHtml(modelKey)}" data-side="max" title="查看最高價原文">${formatPrice(info.max)}<span class="compact-count">×${info.maxCount}</span><span class="used-price-date">(${formatMd(info.maxDate) || "—"})</span></button>`;
-
-  let rangeHtml;
-  if (info.min === info.max) {
-    rangeHtml = minBtn;
-  } else {
-    rangeHtml = `${minBtn}<span class="weekly-range-sep">~</span>${maxBtn}`;
+function buildTicksByModel(ticks) {
+  const byModel = new Map();
+  for (const t of ticks) {
+    const key = (t.model_key || "").trim();
+    if (!byModel.has(key)) byModel.set(key, []);
+    byModel.get(key).push(t);
   }
-
-  const lookbackTag = info.isLookback
-    ? `<span class="weekly-period-tag">回溯 ${formatMd(info.sourceWeekStart)}～${formatMd(info.sourceWeekEnd)}</span>`
-    : "";
-  const cls = info.isLookback ? "used-weekly-range used-weekly-range--prev" : "used-weekly-range";
-  return `<span class="${cls}">${rangeHtml}${lookbackTag}</span>`;
+  return byModel;
 }
 
-function formatShiftsHtml(shifts) {
-  if (!shifts?.length) return "";
-  const items = shifts.map((s) => {
-    const parts = [];
-    if (Math.abs(s.minDelta) >= SHIFT_THRESHOLD) {
-      parts.push(`最低 ${formatPrice(s.prevMin)}→${formatPrice(s.min)}（${formatMoneyDelta(s.minDelta)}）`);
-    }
-    if (Math.abs(s.maxDelta) >= SHIFT_THRESHOLD) {
-      parts.push(`最高 ${formatPrice(s.prevMax)}→${formatPrice(s.max)}（${formatMoneyDelta(s.maxDelta)}）`);
-    }
-    return `<li><span class="used-shift-week">${formatMd(s.weekStart)}週</span> ${escapeHtml(parts.join(" · "))}</li>`;
-  }).join("");
-  return `<ul class="used-shift-list">${items}</ul>`;
+function formatModelRangeHtml(modelKey) {
+  const ticks = ticksByModel.get(modelKey);
+  if (!ticks || !ticks.length) return '<span class="muted">—</span>';
+
+  const prices = ticks.map((t) => Number(t.price)).filter(Number.isFinite);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const cnt = ticks.length;
+
+  const minBtn = `<button type="button" class="used-price-btn" data-model-key="${escapeHtml(modelKey)}" title="查看本月所有報價">${formatPrice(min)}</button>`;
+  const range = min === max
+    ? minBtn
+    : `${minBtn}<span class="weekly-range-sep">~</span><button type="button" class="used-price-btn" data-model-key="${escapeHtml(modelKey)}" title="查看本月所有報價">${formatPrice(max)}</button>`;
+
+  return `<span class="used-weekly-range">${range}<span class="compact-count">×${cnt}筆</span></span>`;
 }
 
 function updateExpandButton() {
   if (!expandAllBtn || !usedPriceList) return;
   const groups = usedPriceList.querySelectorAll("details.model-group");
-  if (!groups.length) {
-    expandAllBtn.disabled = true;
-    expandAllBtn.textContent = "全展開";
-    return;
-  }
+  if (!groups.length) { expandAllBtn.disabled = true; expandAllBtn.textContent = "全展開"; return; }
   expandAllBtn.disabled = false;
   const allOpen = [...groups].every((g) => g.open);
   expandAllBtn.textContent = allOpen ? "收折" : "全展開";
@@ -390,9 +276,7 @@ function updateExpandButton() {
 function applyExpandState() {
   if (!usedPriceList) return;
   const groups = usedPriceList.querySelectorAll("details.model-group");
-  if (expandPreference !== null) {
-    groups.forEach((el) => { el.open = expandPreference; });
-  }
+  if (expandPreference !== null) groups.forEach((el) => { el.open = expandPreference; });
   updateExpandButton();
 }
 
@@ -407,9 +291,7 @@ function renderList() {
 
   const groups = new Map();
   for (const row of rows) {
-    if (!groups.has(row.series)) {
-      groups.set(row.series, { label: row.series, rows: [] });
-    }
+    if (!groups.has(row.series)) groups.set(row.series, { label: row.series, rows: [] });
     groups.get(row.series).rows.push(row);
   }
 
@@ -417,10 +299,7 @@ function renderList() {
     a[1].label.localeCompare(b[1].label, "zh-Hant", { numeric: true }),
   );
 
-  let withRange = 0;
-  let lookbackCount = 0;
-  let shiftModels = 0;
-
+  let withData = 0;
   usedPriceList.innerHTML = sortedGroups.map(([, group]) => {
     const sortedRows = [...group.rows].sort((a, b) => {
       const cap = capacityRank(a.capacity) - capacityRank(b.capacity);
@@ -429,22 +308,16 @@ function renderList() {
     });
 
     const rowsHtml = sortedRows.map((row) => {
-      const info = rangeByModelKey.get(row.model_key);
-      if (info) {
-        withRange += 1;
-        if (info.isLookback) lookbackCount += 1;
-        if (info.shifts?.length) shiftModels += 1;
-      }
-      const shiftsHtml = formatShiftsHtml(info?.shifts);
+      const hasTicks = (ticksByModel.get(row.model_key) || []).length > 0;
+      if (hasTicks) withData += 1;
       return `
       <div class="used-spec-block">
         <div class="compact-row used-market-row">
           <span class="compact-model">${escapeHtml(row.model)}</span>
           <span class="compact-capacity">${escapeHtml(row.capacity || "—")}</span>
           <span class="compact-color">${escapeHtml(row.color || "—")}</span>
-          <span class="compact-discount-low">${formatRangeHtml(row.model_key, info)}</span>
+          <span class="compact-discount-low">${formatModelRangeHtml(row.model_key)}</span>
         </div>
-        ${shiftsHtml}
       </div>`;
     }).join("");
 
@@ -456,7 +329,7 @@ function renderList() {
       </summary>
       <div class="model-group-body">
         <div class="compact-row compact-header used-market-row">
-          <span>型號</span><span>容量</span><span>顏色</span><span>行情（點價看原文）</span>
+          <span>型號</span><span>容量</span><span>顏色</span><span>本月行情（點看所有報價）</span>
         </div>
         ${rowsHtml}
       </div>
@@ -464,129 +337,39 @@ function renderList() {
   }).join("");
 
   applyExpandState();
-
-  const weekEnd = addDaysIso(weekStart, 6);
-  const parts = [
-    `目錄 ${rows.length} 規格`,
-    `有行情 ${withRange}`,
-  ];
-  if (lookbackCount) parts.push(`回溯填入 ${lookbackCount}`);
-  if (shiftModels) parts.push(`有大變動 ${shiftModels}`);
-  setStatus(`${formatWeekLabel(weekStart, weekEnd)} · ${parts.join(" · ")} · 門檻 $${SHIFT_THRESHOLD}`);
+  setStatus(`${monthStart} · 目錄 ${rows.length} 規格 · 有行情 ${withData} · 賣單`);
 }
 
-function updateWeekChrome() {
-  const end = addDaysIso(weekStart, 6);
-  if (weekLabel) weekLabel.textContent = formatWeekLabel(weekStart, end);
-  const isCurrent = weekStart === currentWeekStart();
-  if (weekHint) {
-    weekHint.textContent = isCurrent
-      ? "本週基準 · 沒資料往回推 · 賣單"
-      : "基準週 · 沒資料往回推 · 賣單";
-  }
-  if (weekNextBtn) weekNextBtn.disabled = weekStart >= currentWeekStart();
-  if (weekTodayBtn) weekTodayBtn.disabled = isCurrent;
-}
-
-function formatTickWhen(t) {
-  const raw = t.quoted_at || t.quote_date || "";
-  if (!raw) return "—";
-  const d = new Date(String(raw).trim().replace(" ", "T"));
-  if (Number.isNaN(d.getTime())) return String(raw).slice(0, 16);
-  return d.toLocaleString("zh-TW", {
-    timeZone: TIMEZONE,
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function openPriceQuotes(modelKey, side) {
-  const info = rangeByModelKey.get(modelKey);
-  if (!info || !usedQuoteModal) return;
-  const ticks = side === "max" ? info.maxTicks : info.minTicks;
-  const price = side === "max" ? info.max : info.min;
-  const label = side === "max" ? "最高" : "最低";
-  const row = CATALOG_ROWS.find((r) => r.model_key === modelKey);
-  const title = [row?.model, row?.capacity, row?.color].filter(Boolean).join(" ") || modelKey;
-
-  if (usedQuoteTitle) usedQuoteTitle.textContent = `${title} · ${label} ${formatPrice(price)}`;
-  if (usedQuoteSubtitle) {
-    usedQuoteSubtitle.textContent = `來源週 ${formatMd(info.sourceWeekStart)}～${formatMd(info.sourceWeekEnd)} · 共 ${ticks.length} 則`;
-  }
-
-  const sorted = [...ticks].sort((a, b) => String(b.quoted_at || b.quote_date || "").localeCompare(String(a.quoted_at || a.quote_date || "")));
-  if (usedQuoteList) {
-    if (!sorted.length) {
-      usedQuoteList.innerHTML = '<p class="muted">沒有報價列</p>';
-    } else {
-      usedQuoteList.innerHTML = sorted.map((t) => {
-        const mid = (t.from_mid || "").trim();
-        const midShort = mid ? mid.slice(-8) : "";
-        const who = (t.sender_name || "").trim() || (midShort ? `未知(${midShort})` : "未知");
-        const group = (t.chat_name || "").trim();
-        const line = (t.raw_line || "").trim();
-        const when = formatTickWhen(t);
-        const metaBits = [
-          escapeHtml(when),
-          escapeHtml(who),
-          escapeHtml(group || "群組未知"),
-        ].join(" · ");
-        const body = line
-          ? `<pre class="used-quote-raw">${escapeHtml(line)}</pre>`
-          : `<p class="used-quote-missing muted">此筆無原文（歷史缺欄）。若 LINE 訊息仍在，更新 run.py 後重跑可回填；訊息已不在則無法還原。</p>`;
-        return `
-        <article class="used-quote-card${line ? "" : " used-quote-card--missing"}">
-          <div class="used-quote-meta">${metaBits}</div>
-          ${body}
-        </article>`;
-      }).join("");
-    }
-  }
-  usedQuoteModal.showModal();
-}
-
-function closePriceQuotes() {
-  usedQuoteModal?.close();
+function updateMonthChrome() {
+  if (monthLabel) monthLabel.textContent = `${monthStart}`;
+  if (monthHint) monthHint.textContent = "月份行情 · 點型號查看每筆報價 · 賣單";
+  const isCurrent = monthStart === currentMonth();
+  if (monthNextBtn) monthNextBtn.disabled = isCurrent;
+  if (monthTodayBtn) monthTodayBtn.disabled = isCurrent;
 }
 
 async function refresh() {
-  updateWeekChrome();
+  updateMonthChrome();
   try {
-    setStatus("載入全部二手賣單中…");
-    if (!allTicks.length) {
-      allTicks = await fetchAllUsedTicks();
-    }
-    rebuildRanges();
+    setStatus("載入二手賣單中…");
+    allTicks = await fetchAllUsedTicks();
+    ticksByModel = buildTicksByModel(allTicks);
     renderList();
   } catch (error) {
-    rangeByModelKey = new Map();
+    ticksByModel = new Map();
     if (usedPriceList) usedPriceList.innerHTML = "";
     setStatus(error.message || String(error), "error");
   }
 }
 
-function shiftWeek(deltaWeeks) {
-  const next = addDaysIso(weekStart, deltaWeeks * 7);
-  const cap = currentWeekStart();
-  weekStart = next > cap ? cap : next;
-  rebuildRanges();
-  updateWeekChrome();
-  renderList();
+async function shiftMonth(delta) {
+  monthStart = addMonthsYM(monthStart, delta);
+  await refresh();
 }
 
-weekPrevBtn?.addEventListener("click", () => shiftWeek(-1));
-weekNextBtn?.addEventListener("click", () => {
-  if (weekStart < currentWeekStart()) shiftWeek(1);
-});
-weekTodayBtn?.addEventListener("click", () => {
-  weekStart = currentWeekStart();
-  rebuildRanges();
-  updateWeekChrome();
-  renderList();
-});
+monthPrevBtn?.addEventListener("click", () => shiftMonth(-1));
+monthNextBtn?.addEventListener("click", () => { if (monthStart < currentMonth()) shiftMonth(1); });
+monthTodayBtn?.addEventListener("click", async () => { monthStart = currentMonth(); await refresh(); });
 modelSearch?.addEventListener("input", () => renderList());
 expandAllBtn?.addEventListener("click", () => {
   const groups = [...(usedPriceList?.querySelectorAll("details.model-group") || [])];
@@ -603,17 +386,60 @@ usedPriceList?.addEventListener("click", (event) => {
   const btn = event.target.closest(".used-price-btn");
   if (!btn) return;
   event.preventDefault();
-  openPriceQuotes(btn.dataset.modelKey, btn.dataset.side);
+  openModelModal(btn.dataset.modelKey);
 });
+
 usedQuoteClose?.addEventListener("click", closePriceQuotes);
 usedQuoteModal?.addEventListener("click", (event) => {
   if (event.target === usedQuoteModal) closePriceQuotes();
 });
 
+usedQuoteList?.addEventListener("click", async (event) => {
+  const btn = event.target.closest(".btn-exclude");
+  if (!btn || typeof window._usedExcludeHandler !== "function") return;
+  const tickId = btn.dataset.tickId;
+  if (!tickId) return;
+  btn.disabled = true;
+  btn.textContent = "剔除中…";
+  try {
+    await window._usedExcludeHandler(tickId);
+    const card = btn.closest(".used-quote-card");
+    if (card) {
+      card.classList.add("used-quote-card--excluded");
+      card.querySelector(".btn-exclude").textContent = "✓ 已剔除";
+    }
+    allTicks = allTicks.filter((t) => String(t.id) !== String(tickId));
+    ticksByModel = buildTicksByModel(allTicks);
+    renderList();
+    if (openModelKey) renderQuoteModal(openModelKey);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "⊘ 剔除";
+    alert(`剔除失敗：${err.message || err}`);
+  }
+});
+
+function isAdminMode() {
+  return new URLSearchParams(window.location.search).get("admin") === "1";
+}
+
 async function boot() {
   try {
     initClient();
-    weekStart = currentWeekStart();
+    if (isAdminMode()) {
+      window._usedExcludeHandler = async function excludeUsedTick(tickId) {
+        if (!tickId) throw new Error("缺少 tick id");
+        const { error } = await supabaseClient
+          .from(table("SUPABASE_TICKS_TABLE"))
+          .update({ excluded: true })
+          .eq("id", tickId);
+        if (error) throw new Error(error.message || "剔除失敗");
+      };
+      document.title = "二手行情（Admin）";
+      const hint = document.querySelector(".used-week-hint");
+      if (hint) hint.textContent += " · Admin 模式：可剔除錯誤報價";
+    }
+    monthStart = currentMonth();
     await refresh();
   } catch (error) {
     setStatus(error.message || String(error), "error");

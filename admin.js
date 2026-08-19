@@ -1199,3 +1199,13 @@ buyDemandPendingList?.addEventListener("click", async (event) => {
     alert(error.message);
   }
 });
+
+// ===== 二手 tick 剔除（注入到 used.js 的 _usedExcludeHandler） =====
+window._usedExcludeHandler = async function excludeUsedTick(tickId) {
+  if (!tickId) throw new Error("缺少 tick id");
+  const { error } = await supabaseClient
+    .from(table("SUPABASE_TICKS_TABLE"))
+    .update({ excluded: true })
+    .eq("id", tickId);
+  if (error) throw new Error(error.message || "剔除失敗");
+};

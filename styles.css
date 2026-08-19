@@ -1730,10 +1730,44 @@ body.mode-buy-demand .detail-classify {
   border-color: #fdba74;
 }
 
+.used-quote-card--excluded {
+  opacity: 0.45;
+  pointer-events: none;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
 .used-quote-missing {
   margin: 0;
   font-size: 0.84rem;
   line-height: 1.45;
+}
+
+.used-quote-price {
+  font-weight: 700;
+  color: var(--accent-blue, #2563eb);
+  letter-spacing: 0.01em;
+}
+
+.btn-exclude {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #f87171;
+  background: #fff5f5;
+  color: #dc2626;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn-exclude:hover:not(:disabled) {
+  background: #fee2e2;
+}
+.btn-exclude:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 @media (max-width: 640px) {
