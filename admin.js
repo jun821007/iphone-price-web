@@ -408,7 +408,7 @@ function guessBinding(rawLine) {
   const cls = classifySpec(category, compact);
   const capMatch = (rawLine || "").match(/(\d+)\s*[gG]/i);
   let baseModel = "";
-  const phoneMatch = compact.match(/(1[1-7])(promax|pro|plus|mini|air|e)?/);
+  const phoneMatch = compact.match(/(1[1-8])(promax|pro|plus|mini|air|e)?/);
   if (phoneMatch) {
     baseModel = phoneMatch[1] + (phoneMatch[2] || "");
   }

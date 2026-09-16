@@ -12,6 +12,8 @@ const USED_CATALOG_KEYS = [
   "17promax 256", "17promax 512", "17promax 1T", "17promax 2T",
   "17e 256 黑", "17e 256 白", "17e 256 粉",
   "17e 512 黑", "17e 512 白", "17e 512 粉",
+  "18pro 256", "18pro 512", "18pro 1T", "18pro 2T",
+  "18promax 256", "18promax 512", "18promax 1T", "18promax 2T",
   "16e 128 黑", "16e 128 白", "16e 256 黑", "16e 256 白",
   "iPad7 WiFi", "iPad7 LTE", "iPad8 WiFi", "iPad8 LTE", "iPad9 WiFi", "iPad9 LTE",
   "iPad10 WiFi", "iPad10 LTE", "iPadAir4 WiFi", "iPadAir4 LTE",
