@@ -1731,10 +1731,23 @@ body.mode-buy-demand .detail-classify {
 }
 
 .used-quote-card--excluded {
-  opacity: 0.45;
-  pointer-events: none;
   background: #f1f5f9;
   border-color: #cbd5e1;
+}
+
+.used-quote-card--excluded .used-quote-raw,
+.used-quote-card--excluded .used-quote-price {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.used-quote-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .used-quote-missing {
@@ -1765,9 +1778,27 @@ body.mode-buy-demand .detail-classify {
 .btn-exclude:hover:not(:disabled) {
   background: #fee2e2;
 }
-.btn-exclude:disabled {
+.btn-exclude:disabled,
+.btn-restore:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.btn-restore {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #94a3b8;
+  background: #fff;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn-restore:hover:not(:disabled) {
+  background: #e2e8f0;
 }
 
 @media (max-width: 640px) {

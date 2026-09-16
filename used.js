@@ -6,6 +6,12 @@ const USED_CATALOG_KEYS = [
   "14 128", "14 256", "14plus 128", "14pro 128", "14pro 256", "14promax 128", "14promax 256",
   "15 128", "15 256", "15plus 128", "15pro 128", "15pro 256", "15promax 256", "15promax 512",
   "16 128", "16 256", "16plus 128", "16pro 128", "16pro 256", "16promax 256", "16promax 512",
+  "17 256", "17 512",
+  "17air 256", "17air 512", "17air 1T",
+  "17pro 256", "17pro 512", "17pro 1T",
+  "17promax 256", "17promax 512", "17promax 1T", "17promax 2T",
+  "17e 256 黑", "17e 256 白", "17e 256 粉",
+  "17e 512 黑", "17e 512 白", "17e 512 粉",
   "16e 128 黑", "16e 128 白", "16e 256 黑", "16e 256 白",
   "iPad7 WiFi", "iPad7 LTE", "iPad8 WiFi", "iPad8 LTE", "iPad9 WiFi", "iPad9 LTE",
   "iPad10 WiFi", "iPad10 LTE", "iPadAir4 WiFi", "iPadAir4 LTE",
@@ -35,7 +41,7 @@ const usedQuoteClose = document.getElementById("usedQuoteClose");
 let supabaseClient = null;
 /** 基準月 YYYY-MM */
 let monthStart = "";
-/** 全部歷史 ticks（catalog 內、賣單、excluded=false） */
+/** 當月 ticks（catalog 內、賣單；admin 模式含已剔除） */
 let allTicks = [];
 /**
  * model_key → 當月所有 ticks（陣列，排序由新到舊）
@@ -48,9 +54,8 @@ let expandPreference = null;
 let openModelKey = null;
 
 /**
- * admin 模式：URL 帶 ?admin=1 時啟用剔除按鈕。
- * 剔除需要 service_role key 或 RLS policy 允許 update excluded。
- * 這裡使用同一個 anon key，需確認 Supabase RLS 允許 update excluded=true。
+ * admin 模式（URL 帶 ?admin=1）才會被指派，用來切換 excluded。
+ * 用的是 anon key，Supabase 需有允許 update excluded 兩個方向的 RLS policy。
  */
 window._usedExcludeHandler = null;
 
@@ -151,9 +156,11 @@ function renderQuoteModal(modelKey) {
   const row = CATALOG_ROWS.find((r) => r.model_key === modelKey);
   const title = [row?.model, row?.capacity, row?.color].filter(Boolean).join(" ") || modelKey;
   if (usedQuoteTitle) usedQuoteTitle.textContent = title;
+  const excludedCount = ticks.filter((t) => t.excluded).length;
   if (usedQuoteSubtitle) {
-    const cnt = ticks.length;
-    usedQuoteSubtitle.textContent = `${monthStart} · 共 ${cnt} 筆報價`;
+    const activeCount = ticks.length - excludedCount;
+    const tail = excludedCount ? ` · 已剔除 ${excludedCount} 筆（不計入行情）` : "";
+    usedQuoteSubtitle.textContent = `${monthStart} · 共 ${activeCount} 筆報價${tail}`;
   }
   if (!usedQuoteList) return;
   if (!ticks.length) {
@@ -162,7 +169,9 @@ function renderQuoteModal(modelKey) {
   }
 
   const canExclude = typeof window._usedExcludeHandler === "function";
-  usedQuoteList.innerHTML = ticks.map((t) => {
+  // 已剔除的排到最後，避免干擾閱讀
+  const ordered = [...ticks].sort((a, b) => Number(!!a.excluded) - Number(!!b.excluded));
+  usedQuoteList.innerHTML = ordered.map((t) => {
     const mid = (t.from_mid || "").trim();
     const midShort = mid ? mid.slice(-8) : "";
     const who = (t.sender_name || "").trim() || (midShort ? `未知(${midShort})` : "未知");
@@ -174,15 +183,21 @@ function renderQuoteModal(modelKey) {
     const body = line
       ? `<pre class="used-quote-raw">${escapeHtml(line)}</pre>`
       : `<p class="used-quote-missing muted">此筆無原文（歷史缺欄）。若 LINE 訊息仍在，更新 run.py 後重跑可回填；訊息已不在則無法還原。</p>`;
-    const excludeBtn = canExclude
-      ? `<button type="button" class="btn-exclude" data-tick-id="${escapeHtml(String(t.id || ""))}" data-model-key="${escapeHtml(modelKey)}" title="標記此筆為錯誤並剔除">⊘ 剔除</button>`
-      : "";
+    const tickId = escapeHtml(String(t.id || ""));
+    const actionBtn = !canExclude
+      ? ""
+      : t.excluded
+        ? `<button type="button" class="btn-restore" data-tick-id="${tickId}" data-next="0" title="取消剔除，重新計入行情">↺ 取消剔除</button>`
+        : `<button type="button" class="btn-exclude" data-tick-id="${tickId}" data-next="1" title="標記此筆為錯誤並剔除">⊘ 剔除</button>`;
+    const stateCls = t.excluded ? " used-quote-card--excluded" : (line ? "" : " used-quote-card--missing");
+    const excludedTag = t.excluded ? '<span class="used-quote-tag">已剔除</span>' : "";
     return `
-    <article class="used-quote-card${line ? "" : " used-quote-card--missing"}" data-tick-id="${escapeHtml(String(t.id || ""))}">
+    <article class="used-quote-card${stateCls}" data-tick-id="${tickId}">
       <div class="used-quote-meta">
         <span class="used-quote-price">$${escapeHtml(priceStr)}</span>
         ${metaBits}
-        ${excludeBtn}
+        ${excludedTag}
+        ${actionBtn}
       </div>
       ${body}
     </article>`;
@@ -204,20 +219,23 @@ function closePriceQuotes() {
 async function fetchAllUsedTicks() {
   const ticksTable = table("SUPABASE_TICKS_TABLE");
   const { start, end } = monthRangeIso(monthStart);
-  const selectCols = "id,model_key,price,quote_date,quoted_at,from_mid,sender_name,chat_name,raw_line";
+  const selectCols = "id,model_key,price,quote_date,quoted_at,from_mid,sender_name,chat_name,raw_line,excluded";
   const collected = [];
   let from = 0;
 
   while (true) {
-    const { data, error } = await supabaseClient
+    // admin 模式要看得到已剔除的筆數才能復原，一般模式直接濾掉。
+    let query = supabaseClient
       .from(ticksTable)
       .select(selectCols)
       .eq("category", "used")
       .eq("trade_side", "sell")
-      .eq("excluded", false)
       .not("price", "is", null)
       .gte("quote_date", start)
-      .lt("quote_date", end)
+      .lt("quote_date", end);
+    if (!isAdminMode()) query = query.eq("excluded", false);
+
+    const { data, error } = await query
       .order("quoted_at", { ascending: false })
       .range(from, from + TICK_PAGE - 1);
 
@@ -247,9 +265,14 @@ function buildTicksByModel(ticks) {
   return byModel;
 }
 
+/** 行情區間只算沒被剔除的筆數 */
+function activeTicksFor(modelKey) {
+  return (ticksByModel.get(modelKey) || []).filter((t) => !t.excluded);
+}
+
 function formatModelRangeHtml(modelKey) {
-  const ticks = ticksByModel.get(modelKey);
-  if (!ticks || !ticks.length) return '<span class="muted">—</span>';
+  const ticks = activeTicksFor(modelKey);
+  if (!ticks.length) return '<span class="muted">—</span>';
 
   const prices = ticks.map((t) => Number(t.price)).filter(Number.isFinite);
   const min = Math.min(...prices);
@@ -308,8 +331,7 @@ function renderList() {
     });
 
     const rowsHtml = sortedRows.map((row) => {
-      const hasTicks = (ticksByModel.get(row.model_key) || []).length > 0;
-      if (hasTicks) withData += 1;
+      if (activeTicksFor(row.model_key).length) withData += 1;
       return `
       <div class="used-spec-block">
         <div class="compact-row used-market-row">
@@ -337,7 +359,9 @@ function renderList() {
   }).join("");
 
   applyExpandState();
-  setStatus(`${monthStart} · 目錄 ${rows.length} 規格 · 有行情 ${withData} · 賣單`);
+  const excludedCount = allTicks.filter((t) => t.excluded).length;
+  const excludedBit = excludedCount ? ` · 已剔除 ${excludedCount} 筆` : "";
+  setStatus(`${monthStart} · 目錄 ${rows.length} 規格 · 有行情 ${withData}${excludedBit} · 賣單`);
 }
 
 function updateMonthChrome() {
@@ -395,27 +419,25 @@ usedQuoteModal?.addEventListener("click", (event) => {
 });
 
 usedQuoteList?.addEventListener("click", async (event) => {
-  const btn = event.target.closest(".btn-exclude");
+  const btn = event.target.closest(".btn-exclude, .btn-restore");
   if (!btn || typeof window._usedExcludeHandler !== "function") return;
   const tickId = btn.dataset.tickId;
   if (!tickId) return;
+  const nextExcluded = btn.dataset.next === "1";
+  const originalText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "剔除中…";
+  btn.textContent = nextExcluded ? "剔除中…" : "復原中…";
   try {
-    await window._usedExcludeHandler(tickId);
-    const card = btn.closest(".used-quote-card");
-    if (card) {
-      card.classList.add("used-quote-card--excluded");
-      card.querySelector(".btn-exclude").textContent = "✓ 已剔除";
-    }
-    allTicks = allTicks.filter((t) => String(t.id) !== String(tickId));
+    await window._usedExcludeHandler(tickId, nextExcluded);
+    const target = allTicks.find((t) => String(t.id) === String(tickId));
+    if (target) target.excluded = nextExcluded;
     ticksByModel = buildTicksByModel(allTicks);
     renderList();
     if (openModelKey) renderQuoteModal(openModelKey);
   } catch (err) {
     btn.disabled = false;
-    btn.textContent = "⊘ 剔除";
-    alert(`剔除失敗：${err.message || err}`);
+    btn.textContent = originalText;
+    alert(`${nextExcluded ? "剔除" : "取消剔除"}失敗：${err.message || err}`);
   }
 });
 
@@ -427,17 +449,19 @@ async function boot() {
   try {
     initClient();
     if (isAdminMode()) {
-      window._usedExcludeHandler = async function excludeUsedTick(tickId) {
+      window._usedExcludeHandler = async function setTickExcluded(tickId, excluded = true) {
         if (!tickId) throw new Error("缺少 tick id");
-        const { error } = await supabaseClient
+        const { data, error } = await supabaseClient
           .from(table("SUPABASE_TICKS_TABLE"))
-          .update({ excluded: true })
-          .eq("id", tickId);
-        if (error) throw new Error(error.message || "剔除失敗");
+          .update({ excluded })
+          .eq("id", tickId)
+          .select("id");
+        if (error) throw new Error(error.message || "更新失敗");
+        if (!data?.length) throw new Error("沒有更新到任何列（檢查 Supabase RLS update policy）");
       };
       document.title = "二手行情（Admin）";
       const hint = document.querySelector(".used-week-hint");
-      if (hint) hint.textContent += " · Admin 模式：可剔除錯誤報價";
+      if (hint) hint.textContent += " · Admin 模式：可剔除／取消剔除";
     }
     monthStart = currentMonth();
     await refresh();
