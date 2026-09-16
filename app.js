@@ -752,6 +752,13 @@ function rebuildDayLowestDiscount(ticks, rows) {
 // 上市初期熱門機會加價（群組喊「18p 256紅+3000」），加價金額 = 報價 − 官方建議售價。
 // 只在真的有加價報價時才顯示，行情回穩後這個區塊會自己消失。
 const PREMIUM_MIN = 500;
+const PREMIUM_MAX = 6000;
+// 只有剛上市的世代會加價；舊世代報價高於官價通常是官價調漲還沒同步，不是加價。
+const PREMIUM_ALLOWED_GENS = ["18"];
+
+function isPremiumEligible(modelKey) {
+  return PREMIUM_ALLOWED_GENS.some((gen) => modelKey.startsWith(gen));
+}
 
 function buildLaunchPremium(ticks, rows) {
   const msrpBySpec = new Map();
@@ -764,11 +771,11 @@ function buildLaunchPremium(ticks, rows) {
   for (const t of ticks || []) {
     if (t.price == null || t.category !== "new") continue;
     const modelKey = (t.model_key || "").trim();
-    if (!modelKey) continue;
+    if (!modelKey || !isPremiumEligible(modelKey)) continue;
     const msrp = msrpBySpec.get(`${t.category}|${modelKey}|${t.trade_side || "sell"}`);
     if (!msrp) continue;
     const premium = Number(t.price) - msrp;
-    if (premium < PREMIUM_MIN) continue;
+    if (premium < PREMIUM_MIN || premium > PREMIUM_MAX) continue;
 
     let entry = byModel.get(modelKey);
     if (!entry) {
