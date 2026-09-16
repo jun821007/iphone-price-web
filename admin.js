@@ -18,6 +18,9 @@ const statApproved = document.getElementById("statApproved");
 const statRejected = document.getElementById("statRejected");
 const statAutoHint = document.getElementById("statAutoHint");
 const autoApproveLearned = document.getElementById("autoApproveLearned");
+const exclusionRuleList = document.getElementById("exclusionRuleList");
+
+const RULES_TABLE = "tick_exclusion_rules";
 
 const CATEGORY_OPTIONS = [
   { value: "new", label: "新機" },
@@ -36,16 +39,19 @@ const CONDITION_OPTIONS = [
 ];
 
 const CAPACITY_OPTIONS = ["", "64", "128", "256", "512", "1T", "2T"];
-const COLOR_OPTIONS = ["", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "星光", "午夜"];
+const COLOR_OPTIONS = ["", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "星光", "午夜", "勃根地紅"];
 
-const COLOR_RE = /(黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|星光|午夜)$/;
+const COLOR_RE = /(勃根地紅|黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|星光|午夜|紅)$/;
 
-const PHONE_COLOR_TOKENS = ["星光", "午夜", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰"];
+const PHONE_COLOR_TOKENS = ["勃根地紅", "星光", "午夜", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "紅"];
 const COLOR_ALIASES = [
   ["太空黑", "黑"], ["深空黑", "黑"], ["午夜黑", "黑"],
   ["雲白", "白"], ["雲白色", "白"],
   ["原色", "原"], ["原色鈦", "鈦"],
   ["銀橘色", "銀橘"], ["橘銀色", "橘銀"],
+  ["冰川藍", "藍"], ["冰藍", "藍"],
+  // 已經帶「紅」的不能再補，否則會變成「勃根地紅紅」
+  [/勃根地(?!紅)/g, "勃根地紅"], ["酒紅", "勃根地紅"],
 ];
 
 const FALLBACK_DEVICE_TYPES = [
@@ -172,10 +178,16 @@ function initClient() {
   supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
+}
+
 function normalizeColorAliases(text) {
   let out = String(text || "");
   for (const [alias, canonical] of COLOR_ALIASES) {
-    out = out.split(alias).join(canonical);
+    out = alias instanceof RegExp ? out.replace(alias, canonical) : out.split(alias).join(canonical);
   }
   return out;
 }
@@ -281,6 +293,68 @@ function renderBrandList() {
   brandList.innerHTML = brands.map((b) => `<span class="price-chip">${b.name} <code>${b.code}</code></span>`).join("")
     || '<span class="muted">尚無品牌</span>';
 }
+
+async function loadExclusionRules() {
+  if (!exclusionRuleList) return;
+  const { data, error } = await supabaseClient
+    .from(RULES_TABLE)
+    .select("id,category,raw_line,model_key,created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    exclusionRuleList.innerHTML = error.code === "42P01"
+      ? '<span class="muted">尚未建表，請在 Supabase 執行 supabase_migration_v15</span>'
+      : `<span class="muted">讀取失敗：${escapeHtml(error.message || "")}</span>`;
+    return;
+  }
+  if (!data?.length) {
+    exclusionRuleList.innerHTML = '<span class="muted">尚無剔除規則</span>';
+    return;
+  }
+
+  exclusionRuleList.innerHTML = data.map((r) => {
+    const scope = r.model_key ? `僅 ${escapeHtml(r.model_key)}` : "整句";
+    return `<div class="exclusion-rule">
+      <code class="exclusion-rule-line">${escapeHtml(r.raw_line)}</code>
+      <span class="muted exclusion-rule-meta">${escapeHtml(r.category)} · ${scope} · ${String(r.created_at || "").slice(0, 10)}</span>
+      <button type="button" class="btn-secondary btn-sm" data-rule-id="${r.id}" data-rule-line="${escapeHtml(r.raw_line)}" data-rule-category="${escapeHtml(r.category)}">刪除並復原</button>
+    </div>`;
+  }).join("");
+}
+
+/** 刪規則同時把被它擋掉的報價復原，否則規則沒了但 excluded 還留著 */
+async function deleteExclusionRule(ruleId, category, rawLine) {
+  const { error: delError } = await supabaseClient.from(RULES_TABLE).delete().eq("id", ruleId);
+  if (delError) throw new Error(delError.message || "規則刪除失敗");
+
+  const { data, error } = await supabaseClient
+    .from(table("SUPABASE_TICKS_TABLE") || "quote_ticks")
+    .update({ excluded: false })
+    .eq("category", category)
+    .eq("raw_line", rawLine)
+    .select("id");
+  if (error) throw new Error(error.message || "報價復原失敗");
+  return data?.length || 0;
+}
+
+exclusionRuleList?.addEventListener("click", async (event) => {
+  const btn = event.target.closest("button[data-rule-id]");
+  if (!btn) return;
+  const { ruleId, ruleLine, ruleCategory } = btn.dataset;
+  if (!confirm(`刪除這條規則並復原符合的報價？\n\n${ruleLine}`)) return;
+  btn.disabled = true;
+  btn.textContent = "處理中…";
+  try {
+    const restored = await deleteExclusionRule(ruleId, ruleCategory, ruleLine);
+    await loadExclusionRules();
+    alert(`已刪除規則，復原 ${restored} 筆報價。`);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "刪除並復原";
+    alert(`失敗：${err.message || err}`);
+  }
+});
 
 async function loadModelOptions() {
   const msrpTable = table("SUPABASE_MSRP_TABLE");
@@ -1125,6 +1199,7 @@ async function initAdmin() {
     }
     await loadTaxonomy();
     refreshModelMsrpField();
+    await loadExclusionRules();
     await loadModelOptions();
     await loadPendingDates();
     setAdminReviewTab("quote");

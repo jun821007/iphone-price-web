@@ -1639,11 +1639,38 @@ body.mode-buy-demand .detail-classify {
 }
 
 .compact-list--used-market .used-market-row {
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 1.6fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.65fr) minmax(0, 0.8fr) minmax(0, 1.5fr);
 }
 
-.compact-list--used-market .used-market-row.compact-header span:nth-child(4) {
+.compact-list--used-market .used-market-row.compact-header span:nth-child(5) {
   text-align: right;
+}
+
+.compact-source-month {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.used-month-current {
+  color: var(--muted);
+}
+
+.used-month-lookback {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.used-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .used-weekly-range {
@@ -1811,6 +1838,69 @@ body.mode-buy-demand .detail-classify {
   letter-spacing: 0.01em;
 }
 
+.exclusion-rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.exclusion-rule:first-child {
+  border-top: none;
+}
+
+.exclusion-rule-line {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.exclusion-rule-meta {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .exclusion-rule {
+    flex-wrap: wrap;
+  }
+
+  .exclusion-rule-line {
+    flex-basis: 100%;
+  }
+}
+
+/* 整句規則剔除：一次擋掉同原文的過去與未來重複，因此比單筆剔除更醒目 */
+.btn-exclude-rule {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.btn-exclude-rule:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btn-exclude-rule:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 整句按鈕已經靠右，單筆按鈕接在它後面就不要再推一次 */
+.btn-exclude-rule + .btn-exclude {
+  margin-left: 6px;
+}
+
 .btn-exclude {
   margin-left: auto;
   padding: 2px 8px;
@@ -1852,8 +1942,12 @@ body.mode-buy-demand .detail-classify {
 
 @media (max-width: 640px) {
   .compact-list--used-market .used-market-row {
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 1.25fr);
-    font-size: 0.8rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr) minmax(0, 0.5fr) minmax(0, 0.7fr) minmax(0, 1.2fr);
+    font-size: 0.78rem;
+  }
+
+  .compact-source-month {
+    font-size: 0.7rem;
   }
 
   .used-weekly-range {
