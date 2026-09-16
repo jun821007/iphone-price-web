@@ -647,6 +647,55 @@ tbody tr:hover {
   color: var(--muted);
 }
 
+.premium-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.premium-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
+.premium-model {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.premium-amount {
+  margin-left: auto;
+  font-weight: 700;
+  color: #c2410c;
+  white-space: nowrap;
+}
+
+.premium-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .premium-row {
+    flex-wrap: wrap;
+  }
+
+  .premium-amount {
+    margin-left: 0;
+  }
+
+  .premium-meta {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+}
+
 .rank-list {
   margin: 0;
   padding-left: 1.2rem;

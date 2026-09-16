@@ -48,6 +48,9 @@ const statMessages = document.getElementById("statMessages");
 const statObservations = document.getElementById("statObservations");
 const statRecords = document.getElementById("statRecords");
 const statQuotes = document.getElementById("statQuotes");
+const premiumCard = document.getElementById("premiumCard");
+const premiumSummary = document.getElementById("premiumSummary");
+const premiumList = document.getElementById("premiumList");
 const senderLeaderboard = document.getElementById("senderLeaderboard");
 const senderLeaderboardSummary = document.getElementById("senderLeaderboardSummary");
 const modelLeaderboard = document.getElementById("modelLeaderboard");
@@ -707,13 +710,6 @@ function lowestDiscountLabelForRow(row) {
   return "—";
 }
 
-function renderCompactPriceList(rows) {
-  const specKey = `${row.category}|${row.model_key}|${row.trade_side || "sell"}`;
-  const zhe = dayLowestDiscountBySpec.get(specKey);
-  if (zhe != null) return formatDiscountValue(zhe);
-  return "—";
-}
-
 function rebuildDayLowestDiscount(ticks, rows) {
   const msrpBySpec = new Map();
   for (const r of rows || []) {
@@ -751,6 +747,67 @@ function rebuildDayLowestDiscount(ticks, rows) {
   }
 
   dayLowestDiscountBySpec = bySpec;
+}
+
+// 上市初期熱門機會加價（群組喊「18p 256紅+3000」），加價金額 = 報價 − 官方建議售價。
+// 只在真的有加價報價時才顯示，行情回穩後這個區塊會自己消失。
+const PREMIUM_MIN = 500;
+
+function buildLaunchPremium(ticks, rows) {
+  const msrpBySpec = new Map();
+  for (const r of rows || []) {
+    if (!r.msrp) continue;
+    msrpBySpec.set(`${r.category}|${r.model_key}|${r.trade_side || "sell"}`, Number(r.msrp));
+  }
+
+  const byModel = new Map();
+  for (const t of ticks || []) {
+    if (t.price == null || t.category !== "new") continue;
+    const modelKey = (t.model_key || "").trim();
+    if (!modelKey) continue;
+    const msrp = msrpBySpec.get(`${t.category}|${modelKey}|${t.trade_side || "sell"}`);
+    if (!msrp) continue;
+    const premium = Number(t.price) - msrp;
+    if (premium < PREMIUM_MIN) continue;
+
+    let entry = byModel.get(modelKey);
+    if (!entry) {
+      entry = { modelKey, msrp, min: premium, max: premium, count: 0, people: new Set() };
+      byModel.set(modelKey, entry);
+    }
+    entry.min = Math.min(entry.min, premium);
+    entry.max = Math.max(entry.max, premium);
+    entry.count += 1;
+    entry.people.add(personKeyFromTick(t));
+  }
+
+  return [...byModel.values()].sort((a, b) => b.max - a.max || b.count - a.count);
+}
+
+function renderLaunchPremium(entries) {
+  if (!premiumCard || !premiumList) return;
+  if (!entries.length) {
+    premiumCard.hidden = true;
+    premiumList.innerHTML = "";
+    return;
+  }
+
+  premiumCard.hidden = false;
+  const topPremium = entries[0].max;
+  if (premiumSummary) {
+    premiumSummary.textContent = `上市加價行情（${entries.length} 個型號 · 最高 +${formatPrice(topPremium)}）`;
+  }
+
+  premiumList.innerHTML = entries.map((e) => {
+    const range = e.min === e.max
+      ? `+${formatPrice(e.min)}`
+      : `+${formatPrice(e.min)} ~ +${formatPrice(e.max)}`;
+    return `<div class="premium-row">
+      <span class="premium-model">${escapeHtml(e.modelKey)}</span>
+      <span class="premium-amount">${range}</span>
+      <span class="premium-meta">官價 ${formatPrice(e.msrp)} · ${e.count} 筆 · ${e.people.size} 人</span>
+    </div>`;
+  }).join("");
 }
 
 function topPriceQuoteCount(row) {
@@ -1405,6 +1462,9 @@ async function loadDashboard(selectedDate) {
   if (!isBuy) {
     rebuildDayTopPriceCounts(tickRows);
     rebuildDayLowestDiscount(tickRows, allRows);
+    renderLaunchPremium(buildLaunchPremium(tickRows, allRows));
+  } else {
+    renderLaunchPremium([]);
   }
 
   const modelRows = isBuy
