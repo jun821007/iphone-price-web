@@ -503,8 +503,13 @@ const MODEL_COLOR_RE = /(勃根地紅|冰川藍|太空黑|太空灰|天藍|淺�
 
 const CAPACITY_ORDER = { "64": 0, "128": 1, "256": 2, "512": 3, "1T": 4, "2T": 5 };
 const PREMIUM_COLOR_ORDER = {
-  "勃根地紅": 0, "紅": 1, "藍": 2, "冰川藍": 3, "銀": 4, "黑": 5, "白": 6,
+  "勃根地紅": 0, "紅": 0, "藍": 1, "冰川藍": 2, "銀": 3, "黑": 4, "白": 5,
 };
+
+function premiumDisplayColor(color) {
+  if (color === "勃根地紅") return "紅";
+  return color || "";
+}
 
 function capacityRank(cap) {
   const key = String(cap || "").toUpperCase().replace("TB", "T");
@@ -857,7 +862,8 @@ function renderLaunchPremium(entries) {
     const groupMax = Math.max(...items.map((e) => e.max));
     const rowsHtml = items.map((e) => {
       const parts = splitModelKey(e.modelKey);
-      const spec = [parts.capacity, parts.color].filter(Boolean).join(" ") || e.modelKey;
+      const color = premiumDisplayColor(parts.color);
+      const spec = [parts.capacity, color].filter(Boolean).join(" ") || e.modelKey;
       const range = e.min === e.max
         ? `+${formatPrice(e.min)}`
         : `+${formatPrice(e.min)} ~ +${formatPrice(e.max)}`;
