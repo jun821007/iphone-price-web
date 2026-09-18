@@ -650,7 +650,32 @@ tbody tr:hover {
 .premium-list {
   display: flex;
   flex-direction: column;
+  gap: 14px;
+}
+
+.premium-group {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+}
+
+.premium-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 2px 2px;
+}
+
+.premium-group-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.premium-group-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .premium-row {
@@ -666,6 +691,7 @@ tbody tr:hover {
 .premium-model {
   font-weight: 600;
   word-break: break-all;
+  min-width: 7em;
 }
 
 .premium-amount {
@@ -693,6 +719,10 @@ tbody tr:hover {
   .premium-meta {
     flex-basis: 100%;
     white-space: normal;
+  }
+
+  .premium-group-meta {
+    margin-left: 0;
   }
 }
 

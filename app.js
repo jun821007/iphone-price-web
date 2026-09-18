@@ -499,9 +499,12 @@ function tradeSideTag(side) {
   return '<span class="side-tag side-sell">賣單</span>';
 }
 
-const MODEL_COLOR_RE = /(太空黑|太空灰|天藍|淺綠|薄荷綠|海藍|珊瑚紅|鈦灰|鈦黑|鈦銀|鈦藍|鈦金|鈦白|星光|午夜|薄荷|黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰)$/;
+const MODEL_COLOR_RE = /(勃根地紅|冰川藍|太空黑|太空灰|天藍|淺綠|薄荷綠|海藍|珊瑚紅|鈦灰|鈦黑|鈦銀|鈦藍|鈦金|鈦白|星光|午夜|薄荷|黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|紅)$/;
 
 const CAPACITY_ORDER = { "64": 0, "128": 1, "256": 2, "512": 3, "1T": 4, "2T": 5 };
+const PREMIUM_COLOR_ORDER = {
+  "勃根地紅": 0, "紅": 1, "藍": 2, "冰川藍": 3, "銀": 4, "黑": 5, "白": 6,
+};
 
 function capacityRank(cap) {
   const key = String(cap || "").toUpperCase().replace("TB", "T");
@@ -760,6 +763,44 @@ function isPremiumEligible(modelKey) {
   return PREMIUM_ALLOWED_GENS.some((gen) => modelKey.startsWith(gen));
 }
 
+function premiumSeriesRank(model) {
+  const m = String(model || "").toLowerCase();
+  if (m.includes("promax")) return 1;
+  if (m.includes("pro")) return 0;
+  if (m.includes("air")) return 2;
+  if (/e$/.test(m) || m.includes("e")) return 3;
+  return 9;
+}
+
+function premiumColorRank(color) {
+  return PREMIUM_COLOR_ORDER[color] ?? 50;
+}
+
+function comparePremiumEntries(a, b) {
+  const pa = splitModelKey(a.modelKey);
+  const pb = splitModelKey(b.modelKey);
+  const series = premiumSeriesRank(pa.model) - premiumSeriesRank(pb.model);
+  if (series) return series;
+  const modelCmp = String(pa.model).localeCompare(String(pb.model), "zh-Hant");
+  if (modelCmp) return modelCmp;
+  const cap = capacityRank(pa.capacity) - capacityRank(pb.capacity);
+  if (cap) return cap;
+  const color = premiumColorRank(pa.color) - premiumColorRank(pb.color);
+  if (color) return color;
+  return String(pa.color).localeCompare(String(pb.color), "zh-Hant");
+}
+
+function premiumGroupLabel(modelKey) {
+  const { model } = splitModelKey(modelKey);
+  const m = String(model || "").toLowerCase();
+  if (m.includes("promax")) return "iPhone 18 Pro Max";
+  if (m.includes("pro")) return "iPhone 18 Pro";
+  if (m.includes("air")) return "iPhone 18 Air";
+  if (/^18e/.test(m)) return "iPhone 18e";
+  if (/^18$/.test(m) || m === "18") return "iPhone 18";
+  return model || "其他";
+}
+
 function buildLaunchPremium(ticks, rows) {
   const msrpBySpec = new Map();
   for (const r of rows || []) {
@@ -788,7 +829,7 @@ function buildLaunchPremium(ticks, rows) {
     entry.people.add(personKeyFromTick(t));
   }
 
-  return [...byModel.values()].sort((a, b) => b.max - a.max || b.count - a.count);
+  return [...byModel.values()].sort(comparePremiumEntries);
 }
 
 function renderLaunchPremium(entries) {
@@ -800,19 +841,38 @@ function renderLaunchPremium(entries) {
   }
 
   premiumCard.hidden = false;
-  const topPremium = entries[0].max;
+  const topPremium = Math.max(...entries.map((e) => e.max));
   if (premiumSummary) {
     premiumSummary.textContent = `上市加價行情（${entries.length} 個型號 · 最高 +${formatPrice(topPremium)}）`;
   }
 
-  premiumList.innerHTML = entries.map((e) => {
-    const range = e.min === e.max
-      ? `+${formatPrice(e.min)}`
-      : `+${formatPrice(e.min)} ~ +${formatPrice(e.max)}`;
-    return `<div class="premium-row">
-      <span class="premium-model">${escapeHtml(e.modelKey)}</span>
-      <span class="premium-amount">${range}</span>
-      <span class="premium-meta">官價 ${formatPrice(e.msrp)} · ${e.count} 筆 · ${e.people.size} 人</span>
+  const groups = new Map();
+  for (const e of entries) {
+    const label = premiumGroupLabel(e.modelKey);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(e);
+  }
+
+  premiumList.innerHTML = [...groups.entries()].map(([label, items]) => {
+    const groupMax = Math.max(...items.map((e) => e.max));
+    const rowsHtml = items.map((e) => {
+      const parts = splitModelKey(e.modelKey);
+      const spec = [parts.capacity, parts.color].filter(Boolean).join(" ") || e.modelKey;
+      const range = e.min === e.max
+        ? `+${formatPrice(e.min)}`
+        : `+${formatPrice(e.min)} ~ +${formatPrice(e.max)}`;
+      return `<div class="premium-row">
+        <span class="premium-model">${escapeHtml(spec)}</span>
+        <span class="premium-amount">${range}</span>
+        <span class="premium-meta">官價 ${formatPrice(e.msrp)} · ${e.count} 筆 · ${e.people.size} 人</span>
+      </div>`;
+    }).join("");
+    return `<div class="premium-group">
+      <div class="premium-group-head">
+        <span class="premium-group-label">${escapeHtml(label)}</span>
+        <span class="premium-group-meta">${items.length} 色 · 最高 +${formatPrice(groupMax)}</span>
+      </div>
+      ${rowsHtml}
     </div>`;
   }).join("");
 }
