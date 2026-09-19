@@ -701,6 +701,14 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+.premium-amount.is-discount {
+  color: #15803d;
+}
+
+.premium-amount.is-mixed {
+  color: #a16207;
+}
+
 .premium-meta {
   color: var(--muted);
   font-size: 0.85rem;

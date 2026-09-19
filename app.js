@@ -757,15 +757,29 @@ function rebuildDayLowestDiscount(ticks, rows) {
   dayLowestDiscountBySpec = bySpec;
 }
 
-// 上市初期熱門機會加價（群組喊「18p 256紅+3000」），加價金額 = 報價 − 官方建議售價。
-// 只在真的有加價報價時才顯示，行情回穩後這個區塊會自己消失。
+// 上市初期熱門機會加價（群組喊「18p 256紅+3000」），差額 = 報價 − 官方建議售價。
+// 加價與低於官價（例如 -1500）都會顯示；行情回穩、幾乎都貼官價後這個區塊會自己消失。
 const PREMIUM_MIN = 500;
 const PREMIUM_MAX = 6000;
-// 只有剛上市的世代會加價；舊世代報價高於官價通常是官價調漲還沒同步，不是加價。
+// 只有剛上市的世代會加價／破盤；舊世代報價偏離官價通常是官價調漲還沒同步。
 const PREMIUM_ALLOWED_GENS = ["18"];
 
 function isPremiumEligible(modelKey) {
   return PREMIUM_ALLOWED_GENS.some((gen) => modelKey.startsWith(gen));
+}
+
+function isMeaningfulPremium(premium) {
+  if (premium > 0) return premium >= PREMIUM_MIN && premium <= PREMIUM_MAX;
+  if (premium < 0) return premium <= -PREMIUM_MIN;
+  return false;
+}
+
+function formatSignedPremium(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "—";
+  if (n > 0) return `+${formatPrice(n)}`;
+  if (n < 0) return `-${formatPrice(Math.abs(n))}`;
+  return "0";
 }
 
 function premiumSeriesRank(model) {
@@ -821,7 +835,7 @@ function buildLaunchPremium(ticks, rows) {
     const msrp = msrpBySpec.get(`${t.category}|${modelKey}|${t.trade_side || "sell"}`);
     if (!msrp) continue;
     const premium = Number(t.price) - msrp;
-    if (premium < PREMIUM_MIN || premium > PREMIUM_MAX) continue;
+    if (!isMeaningfulPremium(premium)) continue;
 
     let entry = byModel.get(modelKey);
     if (!entry) {
@@ -847,8 +861,12 @@ function renderLaunchPremium(entries) {
 
   premiumCard.hidden = false;
   const topPremium = Math.max(...entries.map((e) => e.max));
+  const lowPremium = Math.min(...entries.map((e) => e.min));
   if (premiumSummary) {
-    premiumSummary.textContent = `上市加價行情（${entries.length} 個型號 · 最高 +${formatPrice(topPremium)}）`;
+    const bits = [`${entries.length} 個型號`];
+    if (topPremium > 0) bits.push(`最高 ${formatSignedPremium(topPremium)}`);
+    if (lowPremium < 0) bits.push(`最低 ${formatSignedPremium(lowPremium)}`);
+    premiumSummary.textContent = `上市加價行情（${bits.join(" · ")}）`;
   }
 
   const groups = new Map();
@@ -860,23 +878,32 @@ function renderLaunchPremium(entries) {
 
   premiumList.innerHTML = [...groups.entries()].map(([label, items]) => {
     const groupMax = Math.max(...items.map((e) => e.max));
+    const groupMin = Math.min(...items.map((e) => e.min));
+    const groupBits = [`${items.length} 色`];
+    if (groupMax > 0) groupBits.push(`最高 ${formatSignedPremium(groupMax)}`);
+    if (groupMin < 0) groupBits.push(`最低 ${formatSignedPremium(groupMin)}`);
     const rowsHtml = items.map((e) => {
       const parts = splitModelKey(e.modelKey);
       const color = displayColor(parts.color);
       const spec = [parts.capacity, color].filter(Boolean).join(" ") || e.modelKey;
       const range = e.min === e.max
-        ? `+${formatPrice(e.min)}`
-        : `+${formatPrice(e.min)} ~ +${formatPrice(e.max)}`;
+        ? formatSignedPremium(e.min)
+        : `${formatSignedPremium(e.min)} ~ ${formatSignedPremium(e.max)}`;
+      const amountClass = e.max < 0
+        ? "premium-amount is-discount"
+        : e.min < 0
+          ? "premium-amount is-mixed"
+          : "premium-amount";
       return `<div class="premium-row">
         <span class="premium-model">${escapeHtml(spec)}</span>
-        <span class="premium-amount">${range}</span>
+        <span class="${amountClass}">${range}</span>
         <span class="premium-meta">官價 ${formatPrice(e.msrp)} · ${e.count} 筆 · ${e.people.size} 人</span>
       </div>`;
     }).join("");
     return `<div class="premium-group">
       <div class="premium-group-head">
         <span class="premium-group-label">${escapeHtml(label)}</span>
-        <span class="premium-group-meta">${items.length} 色 · 最高 +${formatPrice(groupMax)}</span>
+        <span class="premium-group-meta">${groupBits.join(" · ")}</span>
       </div>
       ${rowsHtml}
     </div>`;
