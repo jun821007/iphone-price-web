@@ -506,7 +506,7 @@ const PREMIUM_COLOR_ORDER = {
   "勃根地紅": 0, "紅": 0, "藍": 1, "冰川藍": 2, "銀": 3, "黑": 4, "白": 5,
 };
 
-function premiumDisplayColor(color) {
+function displayColor(color) {
   if (color === "勃根地紅") return "紅";
   return color || "";
 }
@@ -689,7 +689,7 @@ function renderBuyDemandList(rows) {
       <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
         <span class="compact-model">${modelLabel}${specBadge}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
-        <span class="compact-color">${row.color || "—"}</span>
+        <span class="compact-color">${displayColor(row.color) || "—"}</span>
         <span class="compact-price compact-demand-count"><span class="compact-count">×${row.seeker_count || 0}</span> 人</span>
         <span class="compact-discount-low muted">—</span>
       </div>`;
@@ -862,7 +862,7 @@ function renderLaunchPremium(entries) {
     const groupMax = Math.max(...items.map((e) => e.max));
     const rowsHtml = items.map((e) => {
       const parts = splitModelKey(e.modelKey);
-      const color = premiumDisplayColor(parts.color);
+      const color = displayColor(parts.color);
       const spec = [parts.capacity, color].filter(Boolean).join(" ") || e.modelKey;
       const range = e.min === e.max
         ? `+${formatPrice(e.min)}`
@@ -927,7 +927,7 @@ function renderCompactPriceList(rows) {
       <div class="compact-row row-clickable" data-row-index="${index}" tabindex="0" role="button" aria-label="查看 ${modelLabel}">
         <span class="compact-model">${modelLabel}</span>
         <span class="compact-capacity">${row.capacity || "—"}</span>
-        <span class="compact-color">${row.color || "—"}</span>
+        <span class="compact-color">${displayColor(row.color) || "—"}</span>
         <span class="compact-price">${formatMaybePrice(row.top_price)}<span class="compact-count">×${topPriceQuoteCount(row)}</span></span>
         <span class="compact-discount-low">${lowestDiscountLabelForRow(row)}</span>
       </div>`;
@@ -1074,7 +1074,7 @@ async function openDetailPanel(row) {
   const classifyDetails = document.querySelector(".detail-classify-details");
   if (classifyDetails) classifyDetails.open = false;
   setClassifyStatus("");
-  const label = [rowModelLabel(row), row.capacity, row.color].filter(Boolean).join(" ");
+  const label = [rowModelLabel(row), row.capacity, displayColor(row.color)].filter(Boolean).join(" ");
   detailTitle.textContent = label || row.model_key;
   const specNote = isBuy && row.spec_clear === false ? " · 規格未明" : "";
   detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${isBuy ? "買單徵收" : "賣單"} · ${row.model_key}${specNote}`;
@@ -1264,7 +1264,7 @@ function renderTable(rows) {
       <td data-label="方向">${tradeSideTag(row.trade_side || "sell")}</td>
       <td data-label="型號"><div class="model-name">${row.model || row.model_key}</div><div class="model-key">${row.model_key || ""}</div>${renderClassificationBadges(row)}<button type="button" class="btn-classify" data-row-index="${index}">修正分類</button></td>
       <td data-label="容量">${row.capacity || "—"}</td>
-      <td data-label="顏色">${row.color || "—"}</td>
+      <td data-label="顏色">${displayColor(row.color) || "—"}</td>
       <td data-label="建議售價">${formatMaybePrice(row.msrp)}</td>
       <td class="top-price" data-label="熱門價">${formatMaybePrice(row.top_price)}</td>
       <td class="discount-cell" data-label="目前折數">${discount}</td>
