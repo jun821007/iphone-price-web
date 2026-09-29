@@ -54,7 +54,10 @@ function ensureConfig() {
 
 function initClient() {
   ensureConfig();
-  supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  // RLS 只開放 anon，資料查詢不能帶登入 session，否則會變成 authenticated 而查不到
+  supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "ipw-anon-data" },
+  });
 }
 
 function taipeiToday() {
