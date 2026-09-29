@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
+  <meta name="robots" content="noindex, nofollow" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>審計後台</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
@@ -9,6 +10,7 @@
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
+  <script src="auth-gate.js?v=1"></script>
 </head>
 <body>
   <div class="page">
@@ -17,6 +19,7 @@
         <h1 class="admin-title">審計後台</h1>
         <a class="admin-link" href="index.html">← 回報價查詢</a>
         <a class="admin-link" href="used.html?admin=1">二手行情（剔除模式）</a>
+        <a class="admin-link" href="#" onclick="window.authGate.signOut(); return false;">登出</a>
       </div>
       <div id="auditStats" class="audit-stats" aria-live="polite">
         <span class="audit-stat">待審 <strong id="statPending">—</strong></span>

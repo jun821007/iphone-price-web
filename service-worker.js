@@ -1,4 +1,4 @@
-const CACHE_NAME = "iphone-price-web-v22";
+const CACHE_NAME = "iphone-price-web-v23";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const ASSETS = [
   "./app.js",
   "./admin.js",
   "./config.js",
+  "./auth-gate.js",
   "./manifest.webmanifest",
   "./favicon.ico",
   "./icons/icon-192.png",

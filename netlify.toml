@@ -7,6 +7,7 @@
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
+    X-Robots-Tag = "noindex, nofollow"
 
 [[headers]]
   for = "/service-worker.js"
