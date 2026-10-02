@@ -121,10 +121,22 @@ function baseLow(r) {
   return lows.length % 2 ? lows[mid] : Math.round((lows[mid - 1] + lows[mid]) / 2);
 }
 
+/** 近 2 天電商實際成本（扣券、刷卡活動後）最低；舊資料沒有 ecom_net 就回 null */
+function recentEcomNet(r) {
+  const nets = (r.daily || [])
+    .slice(-2)
+    .map((d) => d.ecom_net)
+    .filter((n) => n != null);
+  return nets.length ? Math.min(...nets) : null;
+}
+
 function cardHtml(r) {
   const v = VERDICT[r.verdict] || VERDICT.normal;
+  const net = recentEcomNet(r);
   const ecom = r.ecom_recent_min
-    ? `${esc(r.ecom_recent_platform)} ${money(r.ecom_recent_min)}${
+    ? `${esc(r.ecom_recent_platform)} 售價 ${money(r.ecom_recent_min)}${
+        net != null ? `，實際成本約 ${money(net)}` : ""
+      }${
         r.ecom_recent_url ? ` <a href="${esc(r.ecom_recent_url)}" target="_blank" rel="noopener">開啟</a>` : ""
       }`
     : "沒有資料";
@@ -153,7 +165,7 @@ function openDetail(model) {
     .map(
       (d) => `<tr><td>${shortDate(d.date)}</td><td>${d.ticks}</td><td>${d.senders}</td><td>${money(
         d.min
-      )}</td><td>${money(d.ecom_min)}</td></tr>`
+      )}</td><td>${money(d.ecom_min)}</td><td>${money(d.ecom_net)}</td></tr>`
     )
     .join("");
   const sellers = (r.top_sellers || [])
@@ -167,7 +179,7 @@ function openDetail(model) {
     <p class="supply-note">${esc(r.verdict_note)}</p>
     <h3 class="supply-subhead">近 14 天</h3>
     <div class="table-wrap"><table class="supply-table">
-      <thead><tr><th>日期</th><th>報價</th><th>賣家</th><th>最低</th><th>電商最低</th></tr></thead>
+      <thead><tr><th>日期</th><th>報價</th><th>賣家</th><th>最低</th><th>電商售價</th><th>電商實際成本</th></tr></thead>
       <tbody>${daily}</tbody>
     </table></div>
     <h3 class="supply-subhead">近 2 天出價最低的賣家</h3>
