@@ -47,6 +47,15 @@
       })
     : null;
 
+  // 可多台裝置同時登入的帳號（Email 小寫後的 SHA-256，原始碼裡不放明文）
+  const MULTI_DEVICE_EMAIL_SHA256 = ["ecdf18b2dc058ef68e8bc4310571971f6e0cafc822134b05e2c0b1582dc36efa"];
+
+  async function isMultiDeviceEmail(email) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email));
+    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+    return MULTI_DEVICE_EMAIL_SHA256.includes(hex);
+  }
+
   let visitLogged = false;
 
   // 每次打開網頁記一次「帳號 × IP × 裝置」，Win11 發現新 IP／新裝置會推 Telegram 提醒管理者
@@ -132,9 +141,10 @@
         errorBox.textContent = translateError(error);
         return;
       }
-      // 一個帳號只留一台裝置：其他裝置的登入全部失效
+      // 一個帳號只留一台裝置：其他裝置的登入全部失效（管理者帳號可多台）
       try {
-        await client.auth.signOut({ scope: "others" });
+        const email = form.querySelector("#authEmail").value.trim().toLowerCase();
+        if (!(await isMultiDeviceEmail(email))) await client.auth.signOut({ scope: "others" });
       } catch (_) {}
       // 頁面腳本在鎖住時已經載入過資料，重新整理讓畫面以登入狀態完整初始化
       window.location.reload();
