@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a2744" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="貨源推斷" />
+  <title>貨源推斷 · 報價查詢</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth-gate.js?v=1"></script>
+</head>
+<body>
+  <div class="page used-page">
+    <header class="header">
+      <h1 class="chart-page-title">貨源推斷</h1>
+      <nav class="header-nav">
+        <a class="admin-link" href="index.html">報價查詢</a>
+        <a class="admin-link" href="used.html">二手行情</a>
+        <a class="admin-link" href="chart.html">價格走勢</a>
+        <a class="admin-link" href="admin.html">審計後台</a>
+      </nav>
+    </header>
+
+    <section class="card used-toolbar">
+      <div class="used-week-nav">
+        <button type="button" id="dayPrevBtn" class="btn-secondary btn-sm" aria-label="前一天">‹ 前一天</button>
+        <div class="used-week-label-wrap">
+          <strong id="dayLabel">—</strong>
+          <span class="muted used-week-hint">近 2 天 vs 前 7 天 · 每晚 22:00 更新</span>
+        </div>
+        <button type="button" id="dayNextBtn" class="btn-secondary btn-sm" aria-label="後一天">後一天 ›</button>
+        <button type="button" id="dayLatestBtn" class="btn-secondary btn-sm">最新</button>
+      </div>
+      <div class="used-filter-row">
+        <input id="modelSearch" type="search" class="chart-model-search" placeholder="搜尋型號，例如 17 256、18promax…" />
+        <label class="used-toggle"><input type="checkbox" id="onlyAlerts" checked /> 只看有異常的</label>
+      </div>
+      <p class="muted supply-legend">
+        <span class="supply-tag supply-tag--ecom">🛒 可能電商</span> 賣家變多或降價，且同期電商扣回饋後買得到行情價以下。
+        <span class="supply-tag supply-tag--other">📶 非電商</span> 賣家變多或降價，但電商刷不到，較可能是電信門號機或通路貨。
+      </p>
+      <p id="supplyStatus" class="muted used-status" aria-live="polite">載入中…</p>
+    </section>
+
+    <section id="supplyList" class="supply-list"></section>
+  </div>
+
+  <dialog id="supplyModal" class="detail-modal">
+    <div class="detail-panel">
+      <header class="detail-header">
+        <div>
+          <h2 id="supplyModalTitle" class="detail-title">—</h2>
+          <p id="supplyModalSubtitle" class="detail-subtitle muted"></p>
+        </div>
+        <button type="button" id="supplyModalClose" class="btn-secondary detail-close" aria-label="關閉">✕</button>
+      </header>
+      <div id="supplyModalBody"></div>
+    </div>
+  </dialog>
+
+  <script src="supply.js?v=1"></script>
+</body>
+</html>
