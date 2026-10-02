@@ -109,6 +109,18 @@ function render() {
   );
 }
 
+// 前 7 天（不含近 2 天）每天最低價的中間值，與分析腳本相同
+function baseLow(r) {
+  const lows = (r.daily || [])
+    .slice(-9, -2)
+    .map((d) => d.min)
+    .filter((v) => v != null)
+    .sort((a, b) => a - b);
+  if (!lows.length) return null;
+  const mid = Math.floor(lows.length / 2);
+  return lows.length % 2 ? lows[mid] : Math.round((lows[mid - 1] + lows[mid]) / 2);
+}
+
 function cardHtml(r) {
   const v = VERDICT[r.verdict] || VERDICT.normal;
   const ecom = r.ecom_recent_min
@@ -126,10 +138,8 @@ function cardHtml(r) {
       <dl class="supply-stats">
         <div><dt>賣家／天</dt><dd>${num(r.recent_senders_per_day)} <span class="muted">（前 7 天 ${num(r.base_senders_per_day)}）</span></dd></div>
         <div><dt>報價／天</dt><dd>${num(r.recent_ticks_per_day)} <span class="muted">（前 7 天 ${num(r.base_ticks_per_day)}）</span></dd></div>
-        <div><dt>中位價</dt><dd>${money(r.recent_median)} <span class="muted">（${diffText(r.recent_median, r.base_median)}）</span></dd></div>
-        <div><dt>最低價</dt><dd>${money(r.recent_min)}</dd></div>
+        <div><dt>同行最低價</dt><dd>${money(r.recent_min)} <span class="muted">（前 7 天約 ${money(baseLow(r))}，${diffText(r.recent_min, baseLow(r))}）</span></dd></div>
         <div><dt>電商最低</dt><dd>${ecom}</dd></div>
-        <div><dt>通訊／電信賣家</dt><dd>${Math.round((r.telecom_share || 0) * 100)}%</dd></div>
       </dl>
     </article>`;
 }
@@ -141,7 +151,7 @@ function openDetail(model) {
   supplyModalSubtitle.textContent = `${shortDate(r.signal_date)} · ${(VERDICT[r.verdict] || VERDICT.normal).label}`;
   const daily = (r.daily || [])
     .map(
-      (d) => `<tr><td>${shortDate(d.date)}</td><td>${d.ticks}</td><td>${d.senders}</td><td>${money(d.median)}</td><td>${money(
+      (d) => `<tr><td>${shortDate(d.date)}</td><td>${d.ticks}</td><td>${d.senders}</td><td>${money(
         d.min
       )}</td><td>${money(d.ecom_min)}</td></tr>`
     )
@@ -157,7 +167,7 @@ function openDetail(model) {
     <p class="supply-note">${esc(r.verdict_note)}</p>
     <h3 class="supply-subhead">近 14 天</h3>
     <div class="table-wrap"><table class="supply-table">
-      <thead><tr><th>日期</th><th>報價</th><th>賣家</th><th>中位</th><th>最低</th><th>電商最低</th></tr></thead>
+      <thead><tr><th>日期</th><th>報價</th><th>賣家</th><th>最低</th><th>電商最低</th></tr></thead>
       <tbody>${daily}</tbody>
     </table></div>
     <h3 class="supply-subhead">近 2 天出價最低的賣家</h3>
