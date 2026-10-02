@@ -132,17 +132,41 @@
         errorBox.textContent = translateError(error);
         return;
       }
+      // 一個帳號只留一台裝置：其他裝置的登入全部失效
+      try {
+        await client.auth.signOut({ scope: "others" });
+      } catch (_) {}
       // 頁面腳本在鎖住時已經載入過資料，重新整理讓畫面以登入狀態完整初始化
       window.location.reload();
     });
   }
 
-  function showLoginForm() {
+  function showLoginForm(message) {
     const gate = document.getElementById("authGate");
     if (!gate) return;
     gate.classList.remove("auth-checking");
+    const box = gate.querySelector(".auth-error");
+    if (box && message) box.textContent = message;
     const email = gate.querySelector("#authEmail");
     if (email) email.focus();
+  }
+
+  function isNetworkError(error) {
+    return /retryable|network|fetch|timeout/i.test(`${error?.name || ""} ${error?.message || ""}`);
+  }
+
+  // 伺服器端確認登入還有效；被其他裝置登入擠掉時鎖回登入畫面（離線不踢人）
+  async function verifyStillValid() {
+    if (!client || root.classList.contains(LOCK_CLASS)) return;
+    try {
+      const { error } = await client.auth.getUser();
+      if (!error || isNetworkError(error)) return;
+      if (error.status === 401 || error.status === 403 || /session|jwt|token/i.test(error.message || "")) {
+        await client.auth.signOut({ scope: "local" }).catch(() => {});
+        lock();
+        showLoginForm("這個帳號已在其他裝置登入，請重新登入");
+      }
+    } catch (_) {}
   }
 
   async function check() {
@@ -154,10 +178,11 @@
       const { data, error } = await client.auth.getSession();
       if (data?.session) {
         unlock();
+        verifyStillValid();
         return;
       }
-      // 離線時續期會失敗，但本機有登入紀錄就不要把人踢出去
-      if (error && hasStoredSession()) {
+      // 離線時續期會失敗，但本機有登入紀錄就不要把人踢出去；被登出（續期被拒）就不放行
+      if (error && isNetworkError(error) && hasStoredSession()) {
         unlock();
         return;
       }
@@ -169,6 +194,11 @@
     }
     showLoginForm();
   }
+
+  setInterval(verifyStillValid, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") verifyStillValid();
+  });
 
   if (client) {
     client.auth.onAuthStateChange((event, session) => {
