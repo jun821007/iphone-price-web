@@ -47,8 +47,21 @@
       })
     : null;
 
+  let visitLogged = false;
+
+  // 每次打開網頁記一次「帳號 × IP × 裝置」，Win11 發現新 IP／新裝置會推 Telegram 提醒管理者
+  function logVisit() {
+    if (visitLogged || !client) return;
+    visitLogged = true;
+    client.rpc("log_visit").then(
+      () => {},
+      () => {}
+    );
+  }
+
   function unlock() {
     root.classList.remove(LOCK_CLASS);
+    logVisit();
   }
 
   function lock() {
