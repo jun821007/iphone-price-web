@@ -2002,7 +2002,7 @@ body.mode-buy-demand .detail-classify {
 /* —— 貨源推斷頁 —— */
 .supply-legend {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   line-height: 1.7;
 }
 
@@ -2025,14 +2025,26 @@ body.mode-buy-demand .detail-classify {
 }
 
 .supply-model {
+  font-size: 1.3rem;
+}
+
+.supply-profit {
+  margin: 8px 0 4px;
   font-size: 1.05rem;
+  color: #166534;
+}
+
+.supply-profit strong {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin-left: 4px;
 }
 
 .supply-tag {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: 0.92rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -2054,7 +2066,7 @@ body.mode-buy-demand .detail-classify {
 
 .supply-note {
   margin: 8px 0;
-  font-size: 0.88rem;
+  font-size: 1.02rem;
   line-height: 1.6;
 }
 
@@ -2063,12 +2075,12 @@ body.mode-buy-demand .detail-classify {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 6px 14px;
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 1rem;
 }
 
 .supply-stats dt {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.9rem;
 }
 
 .supply-stats dd {
@@ -2077,13 +2089,13 @@ body.mode-buy-demand .detail-classify {
 
 .supply-subhead {
   margin: 14px 0 6px;
-  font-size: 0.95rem;
+  font-size: 1.1rem;
 }
 
 .supply-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: 0.98rem;
 }
 
 .supply-table th,
@@ -2102,11 +2114,11 @@ body.mode-buy-demand .detail-classify {
 .supply-sellers {
   margin: 0;
   padding-left: 18px;
-  font-size: 0.85rem;
+  font-size: 1rem;
   line-height: 1.6;
 }
 
 .supply-raw {
-  font-size: 0.75rem;
+  font-size: 0.9rem;
 }
 

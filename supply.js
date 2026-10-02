@@ -140,12 +140,18 @@ function cardHtml(r) {
         r.ecom_recent_url ? ` <a href="${esc(r.ecom_recent_url)}" target="_blank" rel="noopener">開啟</a>` : ""
       }`
     : "沒有資料";
+  const profit = r.verdict === "surge_drop_ecom" && net != null && r.recent_min ? r.recent_min - net : null;
+  const profitHtml =
+    profit != null
+      ? `<p class="supply-profit">電商刷一台、賣同行最低價 <strong>約賺 ${money(profit)}</strong></p>`
+      : "";
   return `
     <article class="card supply-card" data-model="${esc(r.model_group)}">
       <header class="supply-card-head">
         <strong class="supply-model">${esc(r.model_group)}</strong>
         <span class="supply-tag ${v.cls}">${v.label}</span>
       </header>
+      ${profitHtml}
       <p class="supply-note">${esc(r.verdict_note)}</p>
       <dl class="supply-stats">
         <div><dt>賣家／天</dt><dd>${num(r.recent_senders_per_day)} <span class="muted">（前 7 天 ${num(r.base_senders_per_day)}）</span></dd></div>
