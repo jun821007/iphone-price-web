@@ -557,10 +557,11 @@ function watchConnectionFromKey(modelKey) {
 }
 
 function watchBaseModelLabel(row) {
-  const fromFields = `${row.model || ""} ${row.capacity || ""}`.trim();
-  if (fromFields) return fromFields.replace(/\s*(GPS|LTE)\s*$/i, "").trim();
-  const key = (row.model_key || "").replace(/(GPS|LTE).*/i, "").trim();
-  return key || row.model_key || "";
+  let model = String(row.model || "").replace(/\b(GPS|LTE)\b/gi, "").replace(/\s+/g, " ").trim();
+  const cap = String(row.capacity || "").trim();
+  if (model && cap && !model.toLowerCase().includes(cap.toLowerCase())) model = `${model} ${cap}`;
+  if (!model) model = (row.model_key || "").replace(/(GPS|LTE).*/i, "").trim();
+  return model.replace(/^SE(?=\s|\d{2}mm|$)/i, "SE3") || row.model_key || "";
 }
 
 function watchRowModelLabel(row) {
