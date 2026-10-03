@@ -1105,7 +1105,9 @@ async function openDetailPanel(row) {
   const classifyDetails = document.querySelector(".detail-classify-details");
   if (classifyDetails) classifyDetails.open = false;
   setClassifyStatus("");
-  const label = [rowModelLabel(row), row.capacity, displayColor(row.color)].filter(Boolean).join(" ");
+  const modelLabel = rowModelLabel(row);
+  const capLabel = row.capacity && !modelLabel.toLowerCase().includes(String(row.capacity).toLowerCase()) ? row.capacity : "";
+  const label = [modelLabel, capLabel, displayColor(row.color)].filter(Boolean).join(" ");
   detailTitle.textContent = label || row.model_key;
   const specNote = isBuy && row.spec_clear === false ? " · 規格未明" : "";
   detailSubtitle.textContent = `${CATEGORY_LABELS[row.category] || row.category} · ${isBuy ? "買單徵收" : "賣單"} · ${row.model_key}${specNote}`;
