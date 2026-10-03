@@ -545,7 +545,7 @@ function ipadBaseModelName(row) {
 
 function isWatchAccessoryRow(row) {
   const key = (row.model_key || "");
-  if (/^(S11|SE|Ultra)/i.test(key)) return true;
+  if (/^(S1[12]|SE|Ultra)/i.test(key)) return true;
   return inferDeviceType(row) === "wearable";
 }
 
@@ -572,7 +572,7 @@ function watchRowModelLabel(row) {
     || (/\bLTE\b/i.test(row.model || "") ? "LTE" : "")
     || (/\bGPS\b/i.test(row.model || "") ? "GPS" : "");
   if (conn) return `${base} ${conn}`;
-  if (/^(S11|SE|Ultra)/i.test(row.model_key || "")) return `${base} GPS`;
+  if (/^(S1[12]|SE|Ultra)/i.test(row.model_key || "")) return `${base} GPS`;
   return base || row.model_key || "—";
 }
 

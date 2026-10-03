@@ -253,7 +253,7 @@ function classifySpec(category, modelKey) {
   const key = normalizeKey(modelKey);
   const cat = (category || "").toLowerCase();
   let deviceType = "phone";
-  if (key.startsWith("s11") || key.startsWith("se") || key.includes("watch")) deviceType = "wearable";
+  if (key.startsWith("s11") || key.startsWith("s12") || key.startsWith("se") || key.includes("watch")) deviceType = "wearable";
   else if (key.startsWith("macbook") || key.includes("mac")) deviceType = "computer";
   else if (cat === "new_ipad" || key.startsWith("ipad")) deviceType = "tablet";
   else if (key.includes("airpods") || key.includes("applepencil") || cat === "accessory") deviceType = "accessory";
@@ -445,7 +445,7 @@ function guessCategory(rawLine) {
   const line = (rawLine || "").toLowerCase();
   if (/二手|中古|整新/.test(line)) return "used";
   if (/ipad/.test(line)) return "new_ipad";
-  if (/airpods|pencil|配件|保護貼|充電|原廠|watch|s11\b|se\d/.test(line)) return "accessory";
+  if (/airpods|pencil|配件|保護貼|充電|原廠|watch|s1[12]\b|se\d/.test(line)) return "accessory";
   return "new";
 }
 
