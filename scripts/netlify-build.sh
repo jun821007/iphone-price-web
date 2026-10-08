@@ -16,6 +16,7 @@ window.SUPABASE_TICKS_TABLE = "quote_ticks";
 window.SUPABASE_MSRP_TABLE = "product_msrp";
 window.SUPABASE_BUY_DEMAND_TABLE = "buy_demand_ticks";
 window.SUPABASE_BUY_DEMAND_PENDING_TABLE = "buy_demand_pending";
+window.INSTOCK_API_BASE = "${INSTOCK_API_BASE:-}";
 EOF
 
 echo "config.js generated for Netlify deploy"

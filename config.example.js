@@ -8,3 +8,5 @@ window.SUPABASE_TICKS_TABLE = "quote_ticks";
 window.SUPABASE_MSRP_TABLE = "product_msrp";
 window.SUPABASE_BUY_DEMAND_TABLE = "buy_demand_ticks";
 window.SUPABASE_BUY_DEMAND_PENDING_TABLE = "buy_demand_pending";
+// in stock 後端（Railway）網址，新機庫存頁用，例如 https://xxx.up.railway.app
+window.INSTOCK_API_BASE = "";

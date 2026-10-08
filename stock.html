@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a2744" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="新機庫存" />
+  <title>新機庫存 · 報價查詢</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="stylesheet" href="styles.css?v=29" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="auth-gate.js?v=4"></script>
+</head>
+<body>
+  <div class="page used-page">
+    <header class="header">
+      <h1 class="chart-page-title">新機庫存</h1>
+      <nav class="header-nav">
+        <a class="admin-link" href="index.html">報價查詢</a>
+        <a class="admin-link" href="used.html">二手行情</a>
+        <a class="admin-link" href="chart.html">價格走勢</a>
+        <a class="admin-link" href="supply.html">貨源推斷</a>
+        <a class="admin-link" href="admin.html">審計後台</a>
+      </nav>
+    </header>
+
+    <section id="stockLoginCard" class="card stock-login" hidden>
+      <p class="muted">庫存資料在 in stock，請用 in stock 的帳號登入一次（會記住 30 天）。</p>
+      <form id="stockLoginForm" class="stock-login-form">
+        <input id="stockAccount" type="text" autocomplete="username" placeholder="in stock 帳號" required />
+        <input id="stockPassword" type="password" autocomplete="current-password" placeholder="密碼" required />
+        <button type="submit" class="btn-primary">登入</button>
+      </form>
+      <p id="stockLoginError" class="stock-login-error" role="alert"></p>
+    </section>
+
+    <section id="stockMain" class="card used-toolbar">
+      <div class="stock-filter-row">
+        <label class="stock-owner-label" for="ownerSelect">件主</label>
+        <select id="ownerSelect" class="stock-owner-select"></select>
+        <button type="button" id="stockReloadBtn" class="btn-secondary btn-sm">重新整理</button>
+      </div>
+      <div id="stockSummary" class="stock-summary"></div>
+      <p id="stockStatus" class="muted used-status" aria-live="polite">載入中…</p>
+    </section>
+
+    <section id="stockList" class="stock-list"></section>
+  </div>
+
+  <script src="stock.js?v=1"></script>
+</body>
+</html>
