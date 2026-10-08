@@ -145,20 +145,40 @@ async function login(event) {
   }
 }
 
+function applyItems(data) {
+  loginCard.hidden = true;
+  mainCard.hidden = false;
+  items = (data.items || []).filter((i) => i.status === "庫存中");
+  renderOwnerSelect();
+  render();
+}
+
 async function load() {
   const base = apiBase();
   if (!base) {
     stockStatus.textContent = "還沒設定 in stock 後端網址（config.js 的 INSTOCK_API_BASE）";
     return;
   }
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-  if (!token) {
-    showLogin();
-    return;
-  }
   stockStatus.textContent = "載入中…";
   stockReloadBtn.disabled = true;
   try {
+    // 優先用報價網頁的登入（in stock 驗證本站 Supabase 登入）；in stock 還沒開放時退回 in stock 帳密
+    const siteToken = await window.authGate?.getAccessToken?.();
+    if (siteToken) {
+      const res = await fetch(`${base}/api/price-web/newphone-stock`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${siteToken}` },
+      });
+      if (res.ok) {
+        applyItems(await res.json());
+        return;
+      }
+    }
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!token) {
+      showLogin();
+      return;
+    }
     const res = await fetch(`${base}/api/newphone-stock?status=${encodeURIComponent("庫存中")}`, {
       cache: "no-store",
       headers: { Authorization: `Bearer ${token}` },
@@ -169,10 +189,7 @@ async function load() {
       return;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    items = (data.items || []).filter((i) => i.status === "庫存中");
-    renderOwnerSelect();
-    render();
+    applyItems(await res.json());
   } catch (err) {
     stockStatus.textContent = `讀不到 in stock 庫存：${err.message}`;
   } finally {
