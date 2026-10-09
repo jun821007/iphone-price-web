@@ -1,4 +1,4 @@
-const CACHE_NAME = "iphone-price-web-v33";
+const CACHE_NAME = "iphone-price-web-v34";
 const ASSETS = [
   "./",
   "./index.html",

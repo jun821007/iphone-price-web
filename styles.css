@@ -2122,25 +2122,6 @@ body.mode-buy-demand .detail-classify {
   font-size: 0.9rem;
 }
 
-.stock-login-form {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.stock-login-form input {
-  flex: 1 1 160px;
-  padding: 8px 10px;
-  font-size: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.stock-login-error {
-  margin: 8px 0 0;
-  color: #b91c1c;
-}
-
 .stock-filter-row {
   display: flex;
   align-items: center;

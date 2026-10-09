@@ -1,14 +1,10 @@
-/** 新機庫存：唯讀 in stock 後端 /api/newphone-stock（Google 試算表「新機庫存」），只列庫存中 */
+/** 新機庫存：唯讀 in stock 後端 /api/price-web/newphone-stock（Google 試算表「新機庫存」），只列庫存中。
+ *  驗證用本站 Supabase 登入的 access_token；Supabase 專案或 anon key 換了要通知 in stock 一起改 */
 const OWN_LABEL = "自有";
 const ALL_VALUE = "__all__";
 const OWNER_STORAGE_KEY = "ipw-stock-owner";
-// in stock 後端的登入 token（session 存在後端記憶體，Railway 重啟後會失效，要重登）
-const TOKEN_STORAGE_KEY = "ipw-instock-token";
+const DEFAULT_API_BASE = "https://in-stock-production.up.railway.app";
 
-const loginCard = document.getElementById("stockLoginCard");
-const loginForm = document.getElementById("stockLoginForm");
-const loginError = document.getElementById("stockLoginError");
-const mainCard = document.getElementById("stockMain");
 const ownerSelect = document.getElementById("ownerSelect");
 const stockReloadBtn = document.getElementById("stockReloadBtn");
 const stockSummary = document.getElementById("stockSummary");
@@ -110,86 +106,34 @@ function render() {
 }
 
 function apiBase() {
-  return String(window.INSTOCK_API_BASE || "").replace(/\/+$/, "");
+  return String(window.INSTOCK_API_BASE || DEFAULT_API_BASE).replace(/\/+$/, "");
 }
 
-function showLogin(message = "") {
-  loginCard.hidden = false;
-  mainCard.hidden = true;
-  stockList.innerHTML = "";
-  loginError.textContent = message;
-}
-
-async function login(event) {
-  event.preventDefault();
-  loginError.textContent = "登入中…";
-  try {
-    const res = await fetch(`${apiBase()}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        account: document.getElementById("stockAccount").value.trim(),
-        password: document.getElementById("stockPassword").value,
-        remember: true,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.token) throw new Error(typeof data.error === "string" ? data.error : "帳號或密碼錯誤");
-    localStorage.setItem(TOKEN_STORAGE_KEY, data.token);
-    loginForm.reset();
-    loginCard.hidden = true;
-    mainCard.hidden = false;
-    load();
-  } catch (err) {
-    loginError.textContent = err.message;
-  }
-}
-
-function applyItems(data) {
-  loginCard.hidden = true;
-  mainCard.hidden = false;
-  items = (data.items || []).filter((i) => i.status === "庫存中");
-  renderOwnerSelect();
-  render();
+async function fetchStock(refresh) {
+  const token = await window.authGate?.getAccessToken?.(refresh);
+  if (!token) return null;
+  return fetch(`${apiBase()}/api/price-web/newphone-stock`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 async function load() {
-  const base = apiBase();
-  if (!base) {
-    stockStatus.textContent = "還沒設定 in stock 後端網址（config.js 的 INSTOCK_API_BASE）";
-    return;
-  }
   stockStatus.textContent = "載入中…";
   stockReloadBtn.disabled = true;
   try {
-    // 優先用報價網頁的登入（in stock 驗證本站 Supabase 登入）；in stock 還沒開放時退回 in stock 帳密
-    const siteToken = await window.authGate?.getAccessToken?.();
-    if (siteToken) {
-      const res = await fetch(`${base}/api/price-web/newphone-stock`, {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${siteToken}` },
-      });
-      if (res.ok) {
-        applyItems(await res.json());
-        return;
-      }
-    }
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!token) {
-      showLogin();
+    let res = await fetchStock(false);
+    if (res && res.status === 401) res = await fetchStock(true);
+    if (!res || res.status === 401) {
+      stockStatus.textContent = "報價網頁登入已過期，請重新整理頁面再登入一次";
       return;
     }
-    const res = await fetch(`${base}/api/newphone-stock?status=${encodeURIComponent("庫存中")}`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.status === 401) {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-      showLogin("登入已過期（in stock 重新部署過），請再登入一次");
-      return;
-    }
+    if (res.status === 503) throw new Error("in stock 端暫時無法驗證（請通知 in stock）");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    applyItems(await res.json());
+    const data = await res.json();
+    items = (data.items || []).filter((i) => i.status === "庫存中");
+    renderOwnerSelect();
+    render();
   } catch (err) {
     stockStatus.textContent = `讀不到 in stock 庫存：${err.message}`;
   } finally {
@@ -202,5 +146,4 @@ ownerSelect.addEventListener("change", () => {
   render();
 });
 stockReloadBtn.addEventListener("click", load);
-loginForm.addEventListener("submit", login);
 load();

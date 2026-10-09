@@ -221,9 +221,9 @@
   }
 
   window.authGate = {
-    async getAccessToken() {
+    async getAccessToken(refresh = false) {
       if (!client) return null;
-      const { data } = await client.auth.getSession();
+      const { data } = refresh ? await client.auth.refreshSession() : await client.auth.getSession();
       return data?.session?.access_token || null;
     },
     async signOut() {

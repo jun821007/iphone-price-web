@@ -27,17 +27,7 @@
       </nav>
     </header>
 
-    <section id="stockLoginCard" class="card stock-login" hidden>
-      <p class="muted">庫存資料在 in stock，請用 in stock 的帳號登入一次（會記住 30 天）。</p>
-      <form id="stockLoginForm" class="stock-login-form">
-        <input id="stockAccount" type="text" autocomplete="username" placeholder="in stock 帳號" required />
-        <input id="stockPassword" type="password" autocomplete="current-password" placeholder="密碼" required />
-        <button type="submit" class="btn-primary">登入</button>
-      </form>
-      <p id="stockLoginError" class="stock-login-error" role="alert"></p>
-    </section>
-
-    <section id="stockMain" class="card used-toolbar">
+    <section class="card used-toolbar">
       <div class="stock-filter-row">
         <label class="stock-owner-label" for="ownerSelect">件主</label>
         <select id="ownerSelect" class="stock-owner-select"></select>
@@ -50,6 +40,6 @@
     <section id="stockList" class="stock-list"></section>
   </div>
 
-  <script src="stock.js?v=1"></script>
+  <script src="stock.js?v=3"></script>
 </body>
 </html>
