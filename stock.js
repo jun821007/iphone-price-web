@@ -106,7 +106,8 @@ function render() {
 }
 
 function apiBase() {
-  return String(window.INSTOCK_API_BASE || DEFAULT_API_BASE).replace(/\/+$/, "");
+  const base = String(window.INSTOCK_API_BASE || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+  return /^https?:\/\//i.test(base) ? base : `https://${base}`;
 }
 
 async function fetchStock(refresh) {
