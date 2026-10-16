@@ -19,7 +19,7 @@ const CONDITION_OPTIONS = [
 ];
 
 const CAPACITY_OPTIONS = ["", "64", "128", "256", "512", "1T", "2T"];
-const COLOR_OPTIONS = ["", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "星光", "午夜"];
+const COLOR_OPTIONS = ["", "黑", "白", "金", "藍", "綠", "黃", "橘", "紫", "粉", "鈦", "原", "銀", "灰", "星光白", "星光", "夜空", "午夜"];
 
 const FALLBACK_DEVICE_TYPES = [
   { code: "phone", label: "手機" },
@@ -502,11 +502,11 @@ function tradeSideTag(side) {
   return '<span class="side-tag side-sell">賣單</span>';
 }
 
-const MODEL_COLOR_RE = /(勃根地紅|冰川藍|太空黑|太空灰|天藍|淺綠|薄荷綠|海藍|珊瑚紅|鈦灰|鈦黑|鈦銀|鈦藍|鈦金|鈦白|星光|午夜|薄荷|黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|紅)$/;
+const MODEL_COLOR_RE = /(勃根地紅|冰川藍|太空黑|太空灰|天藍|淺綠|薄荷綠|海藍|珊瑚紅|鈦灰|鈦黑|鈦銀|鈦藍|鈦金|鈦白|星光白|星光|夜空色|夜空|午夜|薄荷|黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|紅)$/;
 
 const CAPACITY_ORDER = { "64": 0, "128": 1, "256": 2, "512": 3, "1T": 4, "2T": 5 };
 const PREMIUM_COLOR_ORDER = {
-  "勃根地紅": 0, "紅": 0, "藍": 1, "冰川藍": 2, "銀": 3, "黑": 4, "白": 5,
+  "勃根地紅": 0, "紅": 0, "藍": 1, "冰川藍": 2, "銀": 3, "黑": 4, "夜空": 4, "白": 5, "星光白": 5,
 };
 
 function displayColor(color) {
@@ -580,7 +580,9 @@ function watchRowModelLabel(row) {
 function rowModelLabel(row) {
   if (row.category === "new_ipad") return ipadRowModelLabel(row);
   if (isWatchAccessoryRow(row)) return watchRowModelLabel(row);
-  return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+  const raw = row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+  if (/^duo$/i.test(String(raw).trim())) return "iPhone Duo";
+  return raw;
 }
 
 function ipadRowModelLabel(row) {
@@ -766,7 +768,7 @@ function rebuildDayLowestDiscount(ticks, rows) {
 const PREMIUM_MIN = 500;
 const PREMIUM_MAX = 6000;
 // 只有剛上市的世代會加價／破盤；舊世代報價偏離官價通常是官價調漲還沒同步。
-const PREMIUM_ALLOWED_GENS = ["18"];
+const PREMIUM_ALLOWED_GENS = ["18", "duo"];
 
 function isPremiumEligible(modelKey) {
   return PREMIUM_ALLOWED_GENS.some((gen) => modelKey.startsWith(gen));
@@ -816,6 +818,7 @@ function comparePremiumEntries(a, b) {
 function premiumGroupLabel(modelKey) {
   const { model } = splitModelKey(modelKey);
   const m = String(model || "").toLowerCase();
+  if (m === "duo") return "iPhone Duo";
   if (m.includes("promax")) return "iPhone 18 Pro Max";
   if (m.includes("pro")) return "iPhone 18 Pro";
   if (m.includes("air")) return "iPhone 18 Air";
