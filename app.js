@@ -790,6 +790,7 @@ function formatSignedPremium(amount) {
 
 function premiumSeriesRank(model) {
   const m = String(model || "").toLowerCase();
+  if (m === "duo") return -1; // Duo 最新上市，加價區塊排最前
   if (m.includes("promax")) return 1;
   if (m.includes("pro")) return 0;
   if (m.includes("air")) return 2;
