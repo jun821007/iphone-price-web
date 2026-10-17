@@ -89,6 +89,10 @@ let deviceTypes = [...FALLBACK_DEVICE_TYPES];
 let brands = [...FALLBACK_BRANDS];
 let catalogByCategory = {};
 let modelCatalogLoaded = false;
+/** 背景輪詢：偵測 daily_run_stats / 報價 updated_at 變化就靜默重載（頁面不用手動重整） */
+const AUTO_REFRESH_MS = 20000;
+let autoRefreshTimer = null;
+let autoRefreshInFlight = false;
 
 function table(name) {
   const value = window[name];
@@ -1313,10 +1317,12 @@ function renderTable(rows) {
 }
 
 function updateLastUpdated(syncTime, selectedDate) {
+  if (!lastUpdated) return;
   const formatted = syncTime ? formatUpdatedAt(syncTime) : "—";
-  lastUpdated.textContent = selectedDate
+  const base = selectedDate
     ? `${selectedDate} 最後同步：${formatted}`
     : `最後同步：${formatted}`;
+  lastUpdated.textContent = `${base} · 約每 20 秒自動更新`;
 }
 
 async function fetchLatestSyncTime(selectedDate) {
@@ -1758,8 +1764,9 @@ function setActiveCategory(category) {
   applyFilters();
 }
 
-async function loadAvailableDates() {
+async function loadAvailableDates({ preferDate = "" } = {}) {
   const statsTable = table("SUPABASE_STATS_TABLE");
+  const keep = preferDate || dateSelect?.value || "";
   const [{ data: priceDates, error: priceError }, { data: statDates, error: statError }] = await Promise.all([
     supabaseClient.from(table("SUPABASE_TABLE")).select("quote_date").order("quote_date", { ascending: false }),
     supabaseClient.from(statsTable).select("quote_date").order("quote_date", { ascending: false }),
@@ -1776,7 +1783,8 @@ async function loadAvailableDates() {
     opt.value = day; opt.textContent = day;
     dateSelect.appendChild(opt);
   }
-  if (dates.length) dateSelect.value = dates[0];
+  if (!dates.length) return;
+  dateSelect.value = keep && dates.includes(keep) ? keep : dates[0];
 }
 
 async function loadBuyDemandForDate(selectedDate) {
@@ -1798,15 +1806,15 @@ async function loadBuyDemandForDate(selectedDate) {
   allBuyDemandRows = aggregateBuyDemandRows(buyDemandTicks);
 }
 
-async function loadRowsForDate(selectedDate) {
+async function loadRowsForDate(selectedDate, { quiet = false } = {}) {
   if (!selectedDate) return;
-  setPriceViewMessage("載入中…");
+  if (!quiet) setPriceViewMessage("載入中…");
   if (activeTradeSide === "buy") {
     await loadBuyDemandForDate(selectedDate);
     latestSyncTime = await fetchLatestSyncTime(selectedDate);
     await loadDashboard(selectedDate);
     if (!allBuyDemandRows.length) {
-      setPriceViewMessage("今天尚無徵收需求資料（請確認已執行 migration v7 並重跑 run.py）");
+      if (!quiet) setPriceViewMessage("今天尚無徵收需求資料（請確認已執行 migration v7 並重跑 run.py）");
     } else {
       applyFilters();
     }
@@ -1830,15 +1838,45 @@ async function loadRowsForDate(selectedDate) {
       .select("total_messages,total_records,updated_at")
       .eq("quote_date", selectedDate)
       .maybeSingle();
-    if (stats?.updated_at) {
-      setPriceViewMessage(`手機已同步（${stats.total_messages ?? 0} 則訊息），報價尚在累積中；請稍後再刷新或先開 LINE 讓訊息同步。`);
-    } else {
-      setPriceViewMessage("這個分類今天沒有資料");
+    if (!quiet) {
+      if (stats?.updated_at) {
+        setPriceViewMessage(`手機已同步（${stats.total_messages ?? 0} 則訊息），報價尚在累積中；請稍後再刷新或先開 LINE 讓訊息同步。`);
+      } else {
+        setPriceViewMessage("這個分類今天沒有資料");
+      }
     }
   } else {
     applyFilters();
   }
   updateLastUpdated(latestSyncTime, selectedDate);
+}
+
+function syncTimeKey(date) {
+  return date && !Number.isNaN(date.getTime()) ? String(date.getTime()) : "";
+}
+
+async function checkForAutoUpdates() {
+  if (autoRefreshInFlight) return;
+  if (document.visibilityState === "hidden") return;
+  const selectedDate = dateSelect?.value;
+  if (!selectedDate || !supabaseClient) return;
+  autoRefreshInFlight = true;
+  try {
+    const next = await fetchLatestSyncTime(selectedDate);
+    if (syncTimeKey(next) !== syncTimeKey(latestSyncTime)) {
+      await loadAvailableDates({ preferDate: selectedDate });
+      await loadRowsForDate(dateSelect.value || selectedDate, { quiet: true });
+    }
+  } catch (_) {
+    // 背景輪詢失敗不打擾畫面
+  } finally {
+    autoRefreshInFlight = false;
+  }
+}
+
+function startAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(checkForAutoUpdates, AUTO_REFRESH_MS);
 }
 
 async function boot() {
@@ -1848,10 +1886,15 @@ async function boot() {
     await loadModelCatalog();
     await loadAvailableDates();
     if (dateSelect.value) await loadRowsForDate(dateSelect.value);
+    startAutoRefresh();
   } catch (error) {
     setPriceViewMessage(error.message, "error");
   }
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") checkForAutoUpdates();
+});
 
 dateSelect.addEventListener("change", () => loadRowsForDate(dateSelect.value).catch((e) => {
   setPriceViewMessage(e.message, "error");
