@@ -766,7 +766,8 @@ function rebuildDayLowestDiscount(ticks, rows) {
 // 上市初期熱門機會加價（群組喊「18p 256紅+3000」），差額 = 報價 − 官方建議售價。
 // 加價與低於官價（例如 -1500）都會顯示；行情回穩、幾乎都貼官價後這個區塊會自己消失。
 const PREMIUM_MIN = 500;
-const PREMIUM_MAX = 6000;
+// Duo 上市前香港已喊到 +25000；顯示上限跟 pipeline 對齊 30000
+const PREMIUM_MAX = 30000;
 // 只有剛上市的世代會加價／破盤；舊世代報價偏離官價通常是官價調漲還沒同步。
 const PREMIUM_ALLOWED_GENS = ["18", "duo"];
 
