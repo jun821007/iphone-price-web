@@ -1,4 +1,5 @@
-/** 新機庫存：唯讀 in stock 後端 /api/price-web/newphone-stock（Google 試算表「新機庫存」），只列庫存中。
+/** 新機庫存：唯讀 in stock 後端 /api/price-web/newphone-stock（Google 試算表「新機庫存」）。
+ *  列出庫存中與客訂中，同一規格放同一組；已售出不顯示。客訂中仍計入台數與成本。
  *  驗證用本站 Supabase 登入的 access_token；Supabase 專案或 anon key 換了要通知 in stock 一起改 */
 const OWN_LABEL = "自有";
 const ALL_VALUE = "__all__";
@@ -28,6 +29,14 @@ function ownerOf(item) {
 
 function specOf(item) {
   return [item.model, item.capacity, item.color].map((s) => String(s || "").trim()).filter(Boolean).join(" ");
+}
+
+function stockStatusOf(item) {
+  return String(item.status || "").trim();
+}
+
+function onHand(item) {
+  return stockStatusOf(item) !== "已售出";
 }
 
 function shortDate(text) {
@@ -86,9 +95,10 @@ function renderList(list) {
       .sort((a, b) => String(a.inDate).localeCompare(String(b.inDate)))
       .map((i) => {
         const costLabel = i.stockType === "寄賣" ? "應付件主" : "成本";
+        const hold = stockStatusOf(i) === "客訂中" ? `<span class="stock-reserved">客訂中</span>` : "";
         const meta = [shortDate(i.inDate) && `入庫 ${shortDate(i.inDate)}`, i.sourceChannel, showOwner && ownerOf(i), i.serialNumber && `序號 ${i.serialNumber}`]
           .filter(Boolean).map(esc).join("｜");
-        return `<li class="stock-unit"><span class="stock-unit-meta">${meta || esc(i.stockId)}</span><span class="stock-unit-cost"><span class="muted">${costLabel}</span> ${money(i.cost)}</span></li>`;
+        return `<li class="stock-unit">${hold}<span class="stock-unit-meta">${meta || esc(i.stockId)}</span><span class="stock-unit-cost"><span class="muted">${costLabel}</span> ${money(i.cost)}</span></li>`;
       })
       .join("");
     return `<details class="card stock-group">
@@ -102,7 +112,7 @@ function render() {
   const list = selectedItems();
   renderSummary(list);
   renderList(list);
-  stockStatus.textContent = list.length ? "" : "這個件主目前沒有庫存中的新機";
+  stockStatus.textContent = list.length ? "" : "這個件主目前沒有新機";
 }
 
 function apiBase() {
@@ -132,7 +142,7 @@ async function load() {
     if (res.status === 503) throw new Error("in stock 端暫時無法驗證（請通知 in stock）");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    items = (data.items || []).filter((i) => i.status === "庫存中");
+    items = (data.items || []).filter(onHand);
     renderOwnerSelect();
     render();
   } catch (err) {

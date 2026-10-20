@@ -2205,6 +2205,23 @@ body.mode-buy-demand .detail-classify {
   font-size: 0.98rem;
 }
 
+.stock-unit-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stock-reserved {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .stock-unit-cost {
   white-space: nowrap;
   font-weight: 600;
