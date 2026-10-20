@@ -2180,6 +2180,8 @@ body.mode-buy-demand .detail-classify {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  row-gap: 4px;
+  flex-wrap: wrap;
   cursor: pointer;
   font-size: 1.15rem;
   font-weight: 700;
@@ -2188,6 +2190,29 @@ body.mode-buy-demand .detail-classify {
 .stock-qty {
   color: var(--accent);
   margin-left: 4px;
+}
+
+.stock-spec {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stock-suggest {
+  margin-left: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.stock-below-cost {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  vertical-align: middle;
 }
 
 .stock-units {

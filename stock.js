@@ -1,10 +1,13 @@
 /** 新機庫存：唯讀 in stock 後端 /api/price-web/newphone-stock（Google 試算表「新機庫存」）。
  *  列出庫存中與客訂中，同一規格放同一組；已售出不顯示。客訂中仍計入台數與成本。
- *  驗證用本站 Supabase 登入的 access_token；Supabase 專案或 anon key 換了要通知 in stock 一起改 */
+ *  驗證用本站 Supabase 登入的 access_token；Supabase 專案或 anon key 換了要通知 in stock 一起改。
+ *  建議售價另用 anon client 讀 quote_ticks（不帶登入 session），取台北時間今天與昨天的同行賣價。 */
 const OWN_LABEL = "自有";
 const ALL_VALUE = "__all__";
 const OWNER_STORAGE_KEY = "ipw-stock-owner";
 const DEFAULT_API_BASE = "https://in-stock-production.up.railway.app";
+const TICK_PAGE = 1000;
+const TAIPEI = "Asia/Taipei";
 
 const ownerSelect = document.getElementById("ownerSelect");
 const stockReloadBtn = document.getElementById("stockReloadBtn");
@@ -13,6 +16,9 @@ const stockStatus = document.getElementById("stockStatus");
 const stockList = document.getElementById("stockList");
 
 let items = [];
+let suggestedBySpec = new Map();
+let quoteUnavailable = false;
+let quoteClient = null;
 
 function esc(text) {
   return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -20,6 +26,95 @@ function esc(text) {
 
 function money(v) {
   return `$${Math.round(Number(v) || 0).toLocaleString("en-US")}`;
+}
+
+function normText(value) {
+  return String(value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
+function normCapacity(value) {
+  return normText(value).replace(/gb$|g$/, "");
+}
+
+function specKey(model, capacity, color) {
+  return `${normText(model)}|${normCapacity(capacity)}|${normText(color)}`;
+}
+
+function taipeiToday() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: TAIPEI });
+}
+
+function addCalendarDays(ymd, delta) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + delta)).toISOString().slice(0, 10);
+}
+
+/** 不進位。整數不補小數，小數保留原值。 */
+function formatSuggest(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  const negative = n < 0;
+  const [whole, frac] = String(Math.abs(n)).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${negative ? "-" : ""}$${frac != null ? `${grouped}.${frac}` : grouped}`;
+}
+
+/**
+ * 同一規格的報價先取中位數，低於中位數 85% 的不列入，剩下的取最低。
+ * 只有一筆就用那一筆。比較用整數比例，避免 0.85 浮點誤差把剛好卡在門檻的價格丟掉。
+ */
+function suggestFromPrices(prices) {
+  if (!prices.length) return null;
+  if (prices.length === 1) return prices[0];
+  const sorted = [...prices].sort((a, b) => a - b);
+  const n = sorted.length;
+  const mid = Math.floor(n / 2);
+  const kept = sorted.filter((price) => {
+    if (n % 2 === 1) return price * 20 >= sorted[mid] * 17;
+    return price * 40 >= (sorted[mid - 1] + sorted[mid]) * 17;
+  });
+  return kept.length ? kept[0] : null;
+}
+
+function sellSide(tradeSide) {
+  const side = String(tradeSide ?? "").trim().toLowerCase();
+  return side === "" || side === "sell";
+}
+
+function buildSuggestedPrices(ticks, yesterday, today) {
+  const days = new Set([yesterday, today]);
+  const grouped = new Map();
+  for (const tick of ticks || []) {
+    if (tick.excluded === true) continue;
+    if (!sellSide(tick.trade_side)) continue;
+    const day = String(tick.quote_date || "").slice(0, 10);
+    if (!days.has(day)) continue;
+    const price = Number(tick.price);
+    if (!Number.isFinite(price)) continue;
+    const key = specKey(tick.model, tick.capacity, tick.color);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(price);
+  }
+  const out = new Map();
+  for (const [key, prices] of grouped) {
+    const suggest = suggestFromPrices(prices);
+    if (suggest != null) out.set(key, suggest);
+  }
+  return out;
+}
+
+function belowAnyCost(price, rows) {
+  return rows.some((item) => {
+    const cost = Number(item.cost);
+    return Number.isFinite(cost) && price < cost;
+  });
+}
+
+function suggestHtml(rows) {
+  const price = suggestedBySpec.get(specKey(rows[0].model, rows[0].capacity, rows[0].color));
+  if (price == null) return `<span class="stock-suggest">建議售價</span>`;
+  const warn = belowAnyCost(price, rows) ? `<span class="stock-below-cost">低於成本</span>` : "";
+  return `<span class="stock-suggest">建議售價 ${formatSuggest(price)}${warn}</span>`;
 }
 
 function ownerOf(item) {
@@ -102,7 +197,7 @@ function renderList(list) {
       })
       .join("");
     return `<details class="card stock-group">
-      <summary><span class="stock-spec">${esc(spec)} <span class="stock-qty">×${rows.length}</span></span><span class="stock-sum">${money(sum)}</span></summary>
+      <summary><span class="stock-spec">${esc(spec)} <span class="stock-qty">×${rows.length}</span>${suggestHtml(rows)}</span><span class="stock-sum">${money(sum)}</span></summary>
       <ul class="stock-units">${detail}</ul>
     </details>`;
   }).join("");
@@ -112,7 +207,53 @@ function render() {
   const list = selectedItems();
   renderSummary(list);
   renderList(list);
-  stockStatus.textContent = list.length ? "" : "這個件主目前沒有新機";
+  if (!list.length) {
+    stockStatus.textContent = "這個件主目前沒有新機";
+    return;
+  }
+  stockStatus.textContent = quoteUnavailable ? "建議售價暫時讀不到" : "";
+}
+
+function initQuoteClient() {
+  if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY || !window.supabase?.createClient) {
+    throw new Error("請設定 config.js");
+  }
+  if (!quoteClient) {
+    // RLS 只開放 anon，資料查詢不能帶登入 session，否則會變成 authenticated 而查不到
+    quoteClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "ipw-anon-data" },
+    });
+  }
+  return quoteClient;
+}
+
+async function fetchNewTicks(client, yesterday, today) {
+  const tableName = window.SUPABASE_TICKS_TABLE || "quote_ticks";
+  const rows = [];
+  let from = 0;
+  while (from < 50000) {
+    const { data, error } = await client
+      .from(tableName)
+      .select("model,capacity,color,price,trade_side,excluded,quote_date")
+      .eq("category", "new")
+      .gte("quote_date", yesterday)
+      .lte("quote_date", today)
+      .order("id", { ascending: true })
+      .range(from, from + TICK_PAGE - 1);
+    if (error) throw error;
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < TICK_PAGE) break;
+    from += TICK_PAGE;
+  }
+  return rows;
+}
+
+async function loadSuggestedPrices() {
+  const today = taipeiToday();
+  const yesterday = addCalendarDays(today, -1);
+  const ticks = await fetchNewTicks(initQuoteClient(), yesterday, today);
+  return buildSuggestedPrices(ticks, yesterday, today);
 }
 
 function apiBase() {
@@ -132,6 +273,14 @@ async function fetchStock(refresh) {
 async function load() {
   stockStatus.textContent = "載入中…";
   stockReloadBtn.disabled = true;
+  quoteUnavailable = false;
+  const quotesPromise = loadSuggestedPrices().then(
+    (map) => ({ ok: true, map }),
+    (err) => {
+      console.error(err);
+      return { ok: false, map: new Map() };
+    },
+  );
   try {
     let res = await fetchStock(false);
     if (res && res.status === 401) res = await fetchStock(true);
@@ -143,6 +292,9 @@ async function load() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     items = (data.items || []).filter(onHand);
+    const quotes = await quotesPromise;
+    suggestedBySpec = quotes.map;
+    quoteUnavailable = !quotes.ok;
     renderOwnerSelect();
     render();
   } catch (err) {
