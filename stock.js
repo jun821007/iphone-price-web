@@ -1,7 +1,7 @@
 /** 新機庫存：唯讀 in stock 後端 /api/price-web/newphone-stock（Google 試算表「新機庫存」）。
  *  列出庫存中與客訂中，同一規格放同一組；已售出不顯示。客訂中仍計入台數與成本。
  *  驗證用本站 Supabase 登入的 access_token；Supabase 專案或 anon key 換了要通知 in stock 一起改。
- *  建議售價另用 anon client 讀 quote_ticks（不帶登入 session），取台北時間今天與昨天的同行賣價。 */
+ *  建議售價另用 anon client 讀 quote_ticks（不帶登入 session），取台北時間今天與昨天的新機與配件同行賣價。 */
 const OWN_LABEL = "自有";
 const ALL_VALUE = "__all__";
 const OWNER_STORAGE_KEY = "ipw-stock-owner";
@@ -36,8 +36,99 @@ function normCapacity(value) {
   return normText(value).replace(/gb$|g$/, "");
 }
 
+const STORAGE_SIZES = ["2048", "1024", "512", "256", "128", "64", "32"];
+
+/** 容量欄黏著顏色，例如 256紅、256GB紅、1TB藍。單位本身不是顏色。 */
+function splitCapacityField(capacity) {
+  const raw = String(capacity ?? "").trim();
+  if (!raw) return { capacity: "", color: "" };
+  const withUnit = raw.match(/^(\d+)\s*(tb|gb|t|g)\s*(.*)$/i);
+  if (withUnit) {
+    const rest = withUnit[3].trim();
+    if (rest && !/^(tb|gb|t|g)$/i.test(rest)) {
+      return { capacity: `${withUnit[1]}${withUnit[2]}`, color: rest };
+    }
+    return { capacity: raw, color: "" };
+  }
+  for (const size of STORAGE_SIZES) {
+    if (!raw.startsWith(size)) continue;
+    const rest = raw.slice(size.length).trim();
+    if (!rest || /^\d/.test(rest) || /^(tb|gb|t|g)$/i.test(rest)) continue;
+    return { capacity: size, color: rest };
+  }
+  return { capacity: raw, color: "" };
+}
+
+/** 型號整串含容量（容量欄是空的），例如 18pro max 256紅。從尾巴拆，避免把 18 當成容量。 */
+function splitTrailingStorage(model) {
+  const raw = String(model ?? "").trim();
+  if (!raw) return null;
+  const withUnit = raw.match(/^(.*?)(\d+)\s*(tb|gb|t|g)\s*([^\d]*)$/i);
+  if (withUnit) {
+    const head = withUnit[1].trim();
+    const color = withUnit[4].trim();
+    if (head || color) return { model: head, capacity: `${withUnit[2]}${withUnit[3]}`, color };
+  }
+  for (const size of STORAGE_SIZES) {
+    const idx = raw.lastIndexOf(size);
+    if (idx < 0) continue;
+    const before = raw.slice(0, idx);
+    const after = raw.slice(idx + size.length);
+    if (/\d$/.test(before) || /\d/.test(after)) continue;
+    const head = before.trim();
+    const color = after.trim();
+    if (!head && !color) continue;
+    if (/^(tb|gb|t|g)$/i.test(color)) continue;
+    return { model: head, capacity: size, color };
+  }
+  return null;
+}
+
+function canonColor(modelKey, color) {
+  const c = normText(color);
+  if (modelKey !== "18pro" && modelKey !== "18promax") return c;
+  if (c === "紅" || c === "酒紅" || c === "勃根地") return "勃根地紅";
+  if (c === "冰川藍" || c === "冰藍") return "藍";
+  return c;
+}
+
+function airpodsSpec(model, capacity, color) {
+  const joined = normText(`${model}${capacity}${color}`);
+  const hit = joined.includes("airpods5") || joined.includes("airpod5");
+  if (!hit || joined.includes("pro")) return null;
+  if (joined.includes("無線")) return { model: "airpods5無線充電", capacity: "", color: "" };
+  return { model: "airpods5", capacity: "", color: "" };
+}
+
+/** 庫存和報價走同一套，才對得上 18 Pro 勃根地紅與 AirPods 5 無線。 */
+function matchSpec(model, capacity, color) {
+  let m = String(model ?? "").trim();
+  let cap = String(capacity ?? "").trim();
+  let col = String(color ?? "").trim();
+
+  const capSplit = splitCapacityField(cap);
+  cap = capSplit.capacity;
+  if (!col && capSplit.color) col = capSplit.color;
+
+  if (!String(cap).trim()) {
+    const bundled = splitTrailingStorage(m);
+    if (bundled) {
+      m = bundled.model;
+      cap = bundled.capacity;
+      if (!col && bundled.color) col = bundled.color;
+    }
+  }
+
+  const air = airpodsSpec(m, cap, col);
+  if (air) return air;
+
+  const modelKey = normText(m);
+  return { model: modelKey, capacity: normCapacity(cap), color: canonColor(modelKey, col) };
+}
+
 function specKey(model, capacity, color) {
-  return `${normText(model)}|${normCapacity(capacity)}|${normText(color)}`;
+  const spec = matchSpec(model, capacity, color);
+  return `${spec.model}|${spec.capacity}|${spec.color}`;
 }
 
 function taipeiToday() {
@@ -235,7 +326,7 @@ async function fetchNewTicks(client, yesterday, today) {
     const { data, error } = await client
       .from(tableName)
       .select("model,capacity,color,price,trade_side,excluded,quote_date")
-      .eq("category", "new")
+      .in("category", ["new", "accessory"])
       .gte("quote_date", yesterday)
       .lte("quote_date", today)
       .order("id", { ascending: true })
