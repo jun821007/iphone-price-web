@@ -1,7 +1,7 @@
 /** 新機庫存：唯讀 in stock 後端 /api/price-web/newphone-stock（Google 試算表「新機庫存」）。
  *  列出庫存中與客訂中，同一規格放同一組；已售出不顯示。客訂中仍計入台數與成本。
  *  驗證用本站 Supabase 登入的 access_token；Supabase 專案或 anon key 換了要通知 in stock 一起改。
- *  建議售價另用 anon client 讀 quote_ticks（不帶登入 session），取台北時間今天與昨天的新機與配件同行賣價。 */
+ *  建議同行售價另用 anon client 讀 quote_ticks（不帶登入 session），取台北時間今天與昨天的新機與配件同行賣價。 */
 const OWN_LABEL = "自有";
 const ALL_VALUE = "__all__";
 const OWNER_STORAGE_KEY = "ipw-stock-owner";
@@ -203,9 +203,9 @@ function belowAnyCost(price, rows) {
 
 function suggestHtml(rows) {
   const price = suggestedBySpec.get(specKey(rows[0].model, rows[0].capacity, rows[0].color));
-  if (price == null) return `<span class="stock-suggest">建議售價</span>`;
+  if (price == null) return `<span class="stock-suggest">建議同行售價</span>`;
   const warn = belowAnyCost(price, rows) ? `<span class="stock-below-cost">低於成本</span>` : "";
-  return `<span class="stock-suggest">建議售價 ${formatSuggest(price)}${warn}</span>`;
+  return `<span class="stock-suggest">建議同行售價 ${formatSuggest(price)}${warn}</span>`;
 }
 
 function ownerOf(item) {
@@ -302,7 +302,7 @@ function render() {
     stockStatus.textContent = "這個件主目前沒有新機";
     return;
   }
-  stockStatus.textContent = quoteUnavailable ? "建議售價暫時讀不到" : "";
+  stockStatus.textContent = quoteUnavailable ? "建議同行售價暫時讀不到" : "";
 }
 
 function initQuoteClient() {
