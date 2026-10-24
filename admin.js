@@ -19,6 +19,7 @@ const statRejected = document.getElementById("statRejected");
 const statAutoHint = document.getElementById("statAutoHint");
 const autoApproveLearned = document.getElementById("autoApproveLearned");
 const exclusionRuleList = document.getElementById("exclusionRuleList");
+const exclusionRuleListNew = document.getElementById("exclusionRuleListNew");
 
 const RULES_TABLE = "tick_exclusion_rules";
 
@@ -298,26 +299,9 @@ function renderBrandList() {
     || '<span class="muted">尚無品牌</span>';
 }
 
-async function loadExclusionRules() {
-  if (!exclusionRuleList) return;
-  const { data, error } = await supabaseClient
-    .from(RULES_TABLE)
-    .select("id,category,raw_line,model_key,created_at")
-    .order("created_at", { ascending: false })
-    .limit(200);
-
-  if (error) {
-    exclusionRuleList.innerHTML = error.code === "42P01"
-      ? '<span class="muted">尚未建表，請在 Supabase 執行 supabase_migration_v15</span>'
-      : `<span class="muted">讀取失敗：${escapeHtml(error.message || "")}</span>`;
-    return;
-  }
-  if (!data?.length) {
-    exclusionRuleList.innerHTML = '<span class="muted">尚無剔除規則</span>';
-    return;
-  }
-
-  exclusionRuleList.innerHTML = data.map((r) => {
+function renderExclusionRuleItems(rows) {
+  if (!rows?.length) return '<span class="muted">尚無剔除規則</span>';
+  return rows.map((r) => {
     const scope = r.model_key ? `僅 ${escapeHtml(r.model_key)}` : "整句";
     return `<div class="exclusion-rule">
       <code class="exclusion-rule-line">${escapeHtml(r.raw_line)}</code>
@@ -325,6 +309,32 @@ async function loadExclusionRules() {
       <button type="button" class="btn-secondary btn-sm" data-rule-id="${r.id}" data-rule-line="${escapeHtml(r.raw_line)}" data-rule-category="${escapeHtml(r.category)}">刪除並復原</button>
     </div>`;
   }).join("");
+}
+
+async function loadExclusionRules() {
+  if (!exclusionRuleList && !exclusionRuleListNew) return;
+  const { data, error } = await supabaseClient
+    .from(RULES_TABLE)
+    .select("id,category,raw_line,model_key,created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    const message = error.code === "42P01"
+      ? '<span class="muted">尚未建表，請在 Supabase 執行 supabase_migration_v15</span>'
+      : `<span class="muted">讀取失敗：${escapeHtml(error.message || "")}</span>`;
+    if (exclusionRuleList) exclusionRuleList.innerHTML = message;
+    if (exclusionRuleListNew) exclusionRuleListNew.innerHTML = message;
+    return;
+  }
+
+  const rows = data || [];
+  if (exclusionRuleList) {
+    exclusionRuleList.innerHTML = renderExclusionRuleItems(rows.filter((r) => r.category !== "new"));
+  }
+  if (exclusionRuleListNew) {
+    exclusionRuleListNew.innerHTML = renderExclusionRuleItems(rows.filter((r) => r.category === "new"));
+  }
 }
 
 /** 刪規則同時把被它擋掉的報價復原，否則規則沒了但 excluded 還留著 */
@@ -342,7 +352,7 @@ async function deleteExclusionRule(ruleId, category, rawLine) {
   return data?.length || 0;
 }
 
-exclusionRuleList?.addEventListener("click", async (event) => {
+async function onExclusionRuleClick(event) {
   const btn = event.target.closest("button[data-rule-id]");
   if (!btn) return;
   const { ruleId, ruleLine, ruleCategory } = btn.dataset;
@@ -358,7 +368,10 @@ exclusionRuleList?.addEventListener("click", async (event) => {
     btn.textContent = "刪除並復原";
     alert(`失敗：${err.message || err}`);
   }
-});
+}
+
+exclusionRuleList?.addEventListener("click", onExclusionRuleClick);
+exclusionRuleListNew?.addEventListener("click", onExclusionRuleClick);
 
 async function loadModelOptions() {
   const msrpTable = table("SUPABASE_MSRP_TABLE");

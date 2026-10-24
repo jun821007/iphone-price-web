@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="二手行情" />
   <title>二手行情 · 報價查詢</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=41" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="auth-gate.js?v=4"></script>
@@ -20,6 +20,7 @@
       <h1 class="chart-page-title">二手行情</h1>
       <nav class="header-nav">
         <a class="admin-link" href="index.html">報價查詢</a>
+        <a class="admin-link" href="used-sales.html">本月二手銷售</a>
         <a class="admin-link" href="chart.html">價格走勢</a>
         <a class="admin-link" href="supply.html">貨源推斷</a>
         <a class="admin-link" href="stock.html">新機庫存</a>
@@ -32,7 +33,7 @@
         <button type="button" id="weekPrevBtn" class="btn-secondary btn-sm" aria-label="上一月">‹ 上一月</button>
         <div class="used-week-label-wrap">
           <strong id="weekLabel">—</strong>
-          <span id="weekHint" class="muted used-week-hint">全品項行情 · 本月沒報價自動往前撈 · 賣單</span>
+          <span id="weekHint" class="muted used-week-hint">全品項 · 同行行情與我的賣價 · 本月沒報價自動往前撈 · 賣單</span>
         </div>
         <button type="button" id="weekNextBtn" class="btn-secondary btn-sm" aria-label="下一月">下一月 ›</button>
         <button type="button" id="weekTodayBtn" class="btn-secondary btn-sm">本月</button>
@@ -62,6 +63,7 @@
     </div>
   </dialog>
 
-  <script src="used.js?v=8"></script>
+  <script src="price-markup.js?v=1"></script>
+  <script src="used.js?v=9"></script>
 </body>
 </html>

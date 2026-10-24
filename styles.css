@@ -1677,11 +1677,44 @@ body.mode-buy-demand .detail-classify {
 }
 
 .compact-list--used-market .used-market-row {
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.65fr) minmax(0, 0.8fr) minmax(0, 1.5fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.7fr) minmax(0, 0.55fr) minmax(0, 0.75fr) minmax(0, 1.25fr) minmax(0, 1.15fr);
 }
 
-.compact-list--used-market .used-market-row.compact-header span:nth-child(5) {
+.compact-list--used-market .used-market-row.compact-header span:nth-child(5),
+.compact-list--used-market .used-market-row.compact-header span:nth-child(6) {
   text-align: right;
+}
+
+.compact-list--used-sales .used-sales-row {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 0.6fr) minmax(0, 1.35fr) minmax(0, 1.2fr);
+}
+
+.compact-list--used-sales .used-sales-row.compact-header span:nth-child(4),
+.compact-list--used-sales .used-sales-row.compact-header span:nth-child(5),
+.compact-list--new-market .used-market-row.compact-header span:nth-child(4) {
+  text-align: right;
+}
+
+.compact-list--new-market .used-market-row {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr) minmax(0, 0.7fr) minmax(0, 1.5fr);
+}
+
+.compact-peer,
+.compact-mine {
+  text-align: right;
+}
+
+.my-sell-price {
+  display: inline-block;
+  font-weight: 700;
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.price-field-label {
+  display: none;
 }
 
 .compact-source-month {
@@ -1979,18 +2012,46 @@ body.mode-buy-demand .detail-classify {
 }
 
 @media (max-width: 640px) {
-  .compact-list--used-market .used-market-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr) minmax(0, 0.5fr) minmax(0, 0.7fr) minmax(0, 1.2fr);
-    font-size: 0.78rem;
+  .compact-list--used-market .compact-header,
+  .compact-list--used-sales .compact-header,
+  .compact-list--new-market .compact-header {
+    display: none;
+  }
+
+  .compact-list--used-market .used-market-row,
+  .compact-list--used-sales .used-sales-row,
+  .compact-list--new-market .used-market-row {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 0.6fr);
+    font-size: 0.84rem;
+    row-gap: 4px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .compact-source-month,
+  .compact-peer,
+  .compact-mine {
+    grid-column: 1 / -1;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .price-field-label {
+    display: inline;
+    margin-right: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .my-sell-price,
+  .used-weekly-range {
+    font-size: 0.84rem;
+    white-space: normal;
   }
 
   .compact-source-month {
-    font-size: 0.7rem;
-  }
-
-  .used-weekly-range {
-    font-size: 0.74rem;
-    white-space: normal;
+    font-size: 0.78rem;
   }
 
   .used-shift-list {

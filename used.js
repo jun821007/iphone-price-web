@@ -329,22 +329,35 @@ function buildResolvedByModel() {
   return resolved;
 }
 
-function formatModelRangeHtml(modelKey) {
+/** 同行行情與我的賣價用同一批未剔除賣單，兩邊不會各算各的。 */
+function pricedForModel(modelKey) {
   const hit = resolvedByModel.get(modelKey);
-  if (!hit) return '<span class="muted">—</span>';
+  if (!hit || typeof mySellFromTicks !== "function") return null;
+  const priced = mySellFromTicks(hit.ticks);
+  if (!priced) return null;
+  return { ...priced, month: hit.month };
+}
 
-  const prices = hit.active.map((t) => Number(t.price)).filter(Number.isFinite);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const cnt = hit.active.length;
+function formatModelRangeHtml(modelKey) {
+  const priced = pricedForModel(modelKey);
+  if (!priced) return '<span class="muted">—</span>';
 
   const btn = (value) =>
-    `<button type="button" class="used-price-btn" data-model-key="${escapeHtml(modelKey)}" title="查看 ${hit.month} 所有報價">${formatPrice(value)}</button>`;
-  const range = min === max
-    ? btn(min)
-    : `${btn(min)}<span class="weekly-range-sep">~</span>${btn(max)}`;
+    `<button type="button" class="used-price-btn" data-model-key="${escapeHtml(modelKey)}" title="查看 ${priced.month} 所有報價">${formatPrice(value)}</button>`;
+  const range = priced.peerMin === priced.peerMax
+    ? btn(priced.peerMin)
+    : `${btn(priced.peerMin)}<span class="weekly-range-sep">~</span>${btn(priced.peerMax)}`;
 
-  return `<span class="used-weekly-range">${range}<span class="compact-count">×${cnt}筆</span></span>`;
+  return `<span class="used-weekly-range">${range}<span class="compact-count">×${priced.count}筆</span></span>`;
+}
+
+function formatMySellHtml(modelKey) {
+  const priced = pricedForModel(modelKey);
+  if (!priced || priced.sellMin == null || priced.sellMax == null) return '<span class="muted">—</span>';
+  const text = priced.sellMin === priced.sellMax
+    ? formatPrice(priced.sellMin)
+    : `${formatPrice(priced.sellMin)}<span class="weekly-range-sep">~</span>${formatPrice(priced.sellMax)}`;
+  return `<span class="my-sell-price">${text}</span>`;
 }
 
 function formatSourceMonthHtml(modelKey) {
@@ -380,7 +393,7 @@ function renderList() {
 
   const header = `
     <div class="compact-row compact-header used-market-row">
-      <span>型號</span><span>容量</span><span>顏色</span><span>資料月份</span><span>行情（點看報價）</span>
+      <span>型號</span><span>容量</span><span>顏色</span><span>資料月份</span><span>同行行情</span><span>我的賣價</span>
     </div>`;
 
   const body = rows.map((row) => `
@@ -389,7 +402,8 @@ function renderList() {
       <span class="compact-capacity">${escapeHtml(row.capacity || "—")}</span>
       <span class="compact-color">${escapeHtml(row.color || "—")}</span>
       <span class="compact-source-month">${formatSourceMonthHtml(row.model_key)}</span>
-      <span class="compact-discount-low">${formatModelRangeHtml(row.model_key)}</span>
+      <span class="compact-peer"><span class="price-field-label">同行行情</span>${formatModelRangeHtml(row.model_key)}</span>
+      <span class="compact-mine"><span class="price-field-label">我的賣價</span>${formatMySellHtml(row.model_key)}</span>
     </div>`).join("");
 
   usedPriceList.innerHTML = header + body;
