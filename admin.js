@@ -22,6 +22,7 @@ const exclusionRuleList = document.getElementById("exclusionRuleList");
 const exclusionRuleListNew = document.getElementById("exclusionRuleListNew");
 
 const RULES_TABLE = "tick_exclusion_rules";
+const NEW_MARKET_RULE_CATEGORIES = new Set(["new", "new_ipad", "accessory"]);
 
 const CATEGORY_OPTIONS = [
   { value: "new", label: "新機" },
@@ -330,10 +331,14 @@ async function loadExclusionRules() {
 
   const rows = data || [];
   if (exclusionRuleList) {
-    exclusionRuleList.innerHTML = renderExclusionRuleItems(rows.filter((r) => r.category !== "new"));
+    exclusionRuleList.innerHTML = renderExclusionRuleItems(
+      rows.filter((r) => !NEW_MARKET_RULE_CATEGORIES.has(r.category)),
+    );
   }
   if (exclusionRuleListNew) {
-    exclusionRuleListNew.innerHTML = renderExclusionRuleItems(rows.filter((r) => r.category === "new"));
+    exclusionRuleListNew.innerHTML = renderExclusionRuleItems(
+      rows.filter((r) => NEW_MARKET_RULE_CATEGORIES.has(r.category)),
+    );
   }
 }
 

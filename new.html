@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#1a2744" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="新機行情" />
-  <title>新機行情 · 報價查詢</title>
+  <meta name="apple-mobile-web-app-title" content="新品行情" />
+  <title>新品行情（剔除模式） · 報價查詢</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
-  <link rel="stylesheet" href="styles.css?v=41" />
+  <link rel="stylesheet" href="styles.css?v=42" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="auth-gate.js?v=4"></script>
@@ -17,7 +17,7 @@
 <body>
   <div class="page used-page">
     <header class="header">
-      <h1 class="chart-page-title">新機行情</h1>
+      <h1 class="chart-page-title">新品行情（剔除模式）</h1>
       <nav class="header-nav">
         <a class="admin-link" href="index.html">報價查詢</a>
         <a class="admin-link" href="used.html">二手行情</a>
@@ -34,17 +34,23 @@
         <button type="button" id="weekPrevBtn" class="btn-secondary btn-sm" aria-label="上一月">‹ 上一月</button>
         <div class="used-week-label-wrap">
           <strong id="weekLabel">—</strong>
-          <span id="weekHint" class="muted used-week-hint">新機賣單 · 已剔除不計入 · 目錄含 iPhone Duo</span>
+          <span id="weekHint" class="muted used-week-hint">賣單 · 已剔除不顯示、不計入 · 含新機、iPad、配件</span>
         </div>
         <button type="button" id="weekNextBtn" class="btn-secondary btn-sm" aria-label="下一月">下一月 ›</button>
         <button type="button" id="weekTodayBtn" class="btn-secondary btn-sm">本月</button>
       </div>
       <div class="used-filter-row">
-        <input id="modelSearch" type="search" class="chart-model-search" placeholder="搜尋型號，例如 Duo、17pro…" />
+        <input id="modelSearch" type="search" class="chart-model-search" placeholder="搜尋型號，例如 Duo、iPad、AirPods…" />
         <label class="used-toggle"><input type="checkbox" id="onlyWithData" /> 只看有行情的</label>
       </div>
       <p id="newStatus" class="muted used-status" aria-live="polite">載入中…</p>
     </section>
+
+    <nav class="tabs tabs--three" id="marketTabs" role="tablist" aria-label="新品分類">
+      <button type="button" class="tab active" data-category="new" aria-selected="true">新機</button>
+      <button type="button" class="tab" data-category="new_ipad" aria-selected="false">iPad</button>
+      <button type="button" class="tab" data-category="accessory" aria-selected="false">配件</button>
+    </nav>
 
     <section class="card table-wrap">
       <div id="newPriceList" class="compact-price-list compact-list--new-market"></div>
@@ -65,6 +71,6 @@
   </dialog>
 
   <script src="price-markup.js?v=1"></script>
-  <script src="new.js?v=1"></script>
+  <script src="new.js?v=2"></script>
 </body>
 </html>

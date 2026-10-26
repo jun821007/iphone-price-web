@@ -1,12 +1,19 @@
 /**
- * 新機行情。目錄跟首頁同一套：iphone_prices + product_msrp（category=new），
- * 顯示名沿用 app.js：model 為 duo 時顯示「iPhone Duo」，顏色用 displayColor。
- * 行情只算 category=new 的賣單。買單不進區間，也不拿來剔除。
+ * 新品行情（剔除模式）。目錄跟首頁同一套：iphone_prices + product_msrp，
+ * 依分頁 category 取 new／new_ipad／accessory。
+ * 顯示名沿用 app.js：Duo、ipadRowModelLabel、rowModelLabel／watchRowModelLabel。
+ * 行情只算目前分頁的賣單。買單不進區間，也不拿來剔除。
+ * 剔除規則寫入該筆自己的 category，不一律寫 new。
  */
 const TIMEZONE = "Asia/Taipei";
 const CAPACITY_RANK = { "64": 1, "128": 2, "256": 3, "512": 4, "1T": 5, "2T": 6 };
 const TICK_PAGE = 1000;
 const RULES_TABLE = "tick_exclusion_rules";
+const MARKET_TABS = [
+  { category: "new", label: "新機" },
+  { category: "new_ipad", label: "iPad" },
+  { category: "accessory", label: "配件" },
+];
 const MODEL_COLOR_RE = /(勃根地紅|冰川藍|太空黑|太空灰|天藍|淺綠|薄荷綠|海藍|珊瑚紅|鈦灰|鈦黑|鈦銀|鈦藍|鈦金|鈦白|星光白|星光|夜空色|夜空|午夜|薄荷|黑|白|金|藍|綠|黃|橘|紫|粉|鈦|原|銀|灰|紅)$/;
 
 const monthPrevBtn = document.getElementById("weekPrevBtn");
@@ -22,9 +29,12 @@ const quoteTitle = document.getElementById("newQuoteTitle");
 const quoteSubtitle = document.getElementById("newQuoteSubtitle");
 const quoteList = document.getElementById("newQuoteList");
 const quoteClose = document.getElementById("newQuoteClose");
+const marketTabs = document.getElementById("marketTabs");
 
 let supabaseClient = null;
 let monthStart = "";
+let activeCategory = "new";
+let viewToken = 0;
 let catalogRows = [];
 let allTicks = [];
 let ticksByModel = new Map();
@@ -104,10 +114,108 @@ function splitModelKey(modelKey) {
   return { model, capacity, color };
 }
 
+function isMarketCategory(category) {
+  return MARKET_TABS.some((tab) => tab.category === category);
+}
+
+function categoryLabel(category) {
+  return MARKET_TABS.find((tab) => tab.category === category)?.label || category || "";
+}
+
+function syncMarketTabs() {
+  marketTabs?.querySelectorAll(".tab").forEach((btn) => {
+    const on = btn.dataset.category === activeCategory;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+}
+
 /** 與 app.js rowModelLabel 的 Duo 規則一致。 */
 function displayModelName(model) {
   if (/^duo$/i.test(String(model || "").trim())) return "iPhone Duo";
   return String(model || "").trim();
+}
+
+/** 以下顯示名與 app.js 同名函式一致，不載入 app.js。 */
+function inferDeviceType(row) {
+  if (row.device_type) return row.device_type;
+  if (row.category === "new_ipad") return "tablet";
+  if (row.category === "mac") return "computer";
+  if (row.category === "android") return "phone";
+  if (row.category === "accessory") return "accessory";
+  if (row.category === "used") {
+    const key = String(row.model_key || row.model || "").toLowerCase();
+    if (key.includes("ipad")) return "tablet";
+    if (key.includes("airpods") || key.includes("watch")) return "wearable";
+    if (key.includes("mac")) return "computer";
+  }
+  return "phone";
+}
+
+function ipadConnectionFromKey(modelKey) {
+  const parts = String(modelKey || "").trim().split(/\s+/);
+  const last = (parts[parts.length - 1] || "").toLowerCase();
+  if (last === "lte") return "LTE";
+  if (last === "wifi") return "WiFi";
+  return "";
+}
+
+function ipadBaseModelName(row) {
+  const name = row.model || splitModelKey(row.model_key).model || row.model_key || "";
+  return name.replace(/\s*(WiFi|LTE)\s*$/i, "").trim();
+}
+
+function isWatchAccessoryRow(row) {
+  const key = (row.model_key || "");
+  if (/^(S1[12]|SE|Ultra)/i.test(key)) return true;
+  return inferDeviceType(row) === "wearable";
+}
+
+function watchConnectionFromKey(modelKey) {
+  const key = String(modelKey || "");
+  if (/LTE/i.test(key)) return "LTE";
+  if (/GPS/i.test(key)) return "GPS";
+  return "";
+}
+
+function watchBaseModelLabel(row) {
+  let model = String(row.model || "").replace(/\b(GPS|LTE)\b/gi, "").replace(/\s+/g, " ").trim();
+  const cap = String(row.capacity || "").trim();
+  if (model && cap && !model.toLowerCase().includes(cap.toLowerCase())) model = `${model} ${cap}`;
+  if (!model) model = (row.model_key || "").replace(/(GPS|LTE).*/i, "").trim();
+  return model.replace(/^SE(?=\s|\d{2}mm|$)/i, "SE3") || row.model_key || "";
+}
+
+function watchRowModelLabel(row) {
+  if (!isWatchAccessoryRow(row)) {
+    return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+  }
+  const base = watchBaseModelLabel(row);
+  const conn = watchConnectionFromKey(row.model_key)
+    || (/\bLTE\b/i.test(row.model || "") ? "LTE" : "")
+    || (/\bGPS\b/i.test(row.model || "") ? "GPS" : "");
+  if (conn) return `${base} ${conn}`;
+  if (/^(S1[12]|SE|Ultra)/i.test(row.model_key || "")) return `${base} GPS`;
+  return base || row.model_key || "—";
+}
+
+function ipadRowModelLabel(row) {
+  if (row.category !== "new_ipad") {
+    return row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+  }
+  const base = ipadBaseModelName(row);
+  const conn = ipadConnectionFromKey(row.model_key)
+    || (/\blte\b/i.test(row.model || "") ? "LTE" : "")
+    || (/\bwifi\b/i.test(row.model || "") ? "WiFi" : "");
+  return conn ? `${base} ${conn}` : base;
+}
+
+function rowModelLabel(row) {
+  if (row.category === "new_ipad") return ipadRowModelLabel(row);
+  if (isWatchAccessoryRow(row)) return watchRowModelLabel(row);
+  const raw = row.model || splitModelKey(row.model_key).model || row.model_key || "—";
+  if (/^duo$/i.test(String(raw).trim())) return "iPhone Duo";
+  return raw;
 }
 
 function capacityRank(cap) {
@@ -125,9 +233,10 @@ function isAdminMode() {
   return new URLSearchParams(window.location.search).get("admin") === "1";
 }
 
-function specFromParts(modelKey, model, capacity, color) {
+function specFromParts(modelKey, model, capacity, color, category) {
   const parsed = splitModelKey(modelKey);
   return {
+    category: category || activeCategory,
     model_key: modelKey,
     model: (model || parsed.model || "").trim(),
     capacity: (capacity || parsed.capacity || "").trim(),
@@ -157,19 +266,19 @@ async function fetchPaged(makeQuery) {
  * 跟首頁 loadModelCatalog 一樣合併 iphone_prices 與 product_msrp。
  * 價格表已經有「duo256夜空」這類完整規格時，不再另列無顏色的 msrp 鍵（duo256）。
  */
-async function loadCatalog() {
+async function loadCatalog(category) {
   const pricesTable = table("SUPABASE_TABLE");
   const msrpTable = table("SUPABASE_MSRP_TABLE");
   const [priceRows, msrpRows] = await Promise.all([
-    fetchPaged(() => supabaseClient.from(pricesTable).select("category,model_key,model,capacity,color").eq("category", "new").order("model_key")),
-    fetchPaged(() => supabaseClient.from(msrpTable).select("category,model_key").eq("category", "new").order("model_key")),
+    fetchPaged(() => supabaseClient.from(pricesTable).select("category,model_key,model,capacity,color").eq("category", category).order("model_key")),
+    fetchPaged(() => supabaseClient.from(msrpTable).select("category,model_key").eq("category", category).order("model_key")),
   ]);
 
   const byKey = new Map();
   for (const row of priceRows) {
     const modelKey = (row.model_key || "").trim();
     if (!modelKey || byKey.has(modelKey)) continue;
-    byKey.set(modelKey, specFromParts(modelKey, row.model, row.capacity, row.color));
+    byKey.set(modelKey, specFromParts(modelKey, row.model, row.capacity, row.color, row.category || category));
   }
 
   const specKeys = [...byKey.keys()];
@@ -184,7 +293,7 @@ async function loadCatalog() {
       return spec === lower || spec.startsWith(lower);
     });
     if (covered || byKey.has(modelKey)) continue;
-    byKey.set(modelKey, specFromParts(modelKey, "", "", ""));
+    byKey.set(modelKey, specFromParts(modelKey, "", "", "", category));
   }
   return [...byKey.values()];
 }
@@ -192,10 +301,10 @@ async function loadCatalog() {
 function rememberTickSpec(tick) {
   const modelKey = (tick.model_key || "").trim();
   if (!modelKey || catalogRows.some((row) => row.model_key === modelKey)) return;
-  catalogRows.push(specFromParts(modelKey, tick.model, tick.capacity, tick.color));
+  catalogRows.push(specFromParts(modelKey, tick.model, tick.capacity, tick.color, tick.category || activeCategory));
 }
 
-async function fetchMonthTicks() {
+async function fetchMonthTicks(category) {
   const ticksTable = table("SUPABASE_TICKS_TABLE");
   const { start, end } = monthRangeIso(monthStart);
   const selectCols = "id,model_key,model,capacity,color,price,quote_date,quoted_at,from_mid,sender_name,chat_name,raw_line,excluded,trade_side,category";
@@ -206,7 +315,7 @@ async function fetchMonthTicks() {
     let query = supabaseClient
       .from(ticksTable)
       .select(selectCols)
-      .eq("category", "new")
+      .eq("category", category)
       .eq("trade_side", "sell")
       .not("price", "is", null)
       .gte("quote_date", start)
@@ -253,11 +362,13 @@ function marketBounds(modelKey) {
 }
 
 function rowLabel(row) {
-  return displayModelName(row.model || splitModelKey(row.model_key).model) || row.model_key;
+  return rowModelLabel(row) || row.model_key;
 }
 
 function groupLabel(row) {
-  return rowLabel(row) || "其他";
+  if (row.category === "new_ipad") return ipadBaseModelName(row) || "其他";
+  if (isWatchAccessoryRow(row)) return watchBaseModelLabel(row) || "其他";
+  return displayModelName(row.model || splitModelKey(row.model_key).model) || rowLabel(row) || "其他";
 }
 
 function filteredCatalog() {
@@ -265,7 +376,7 @@ function filteredCatalog() {
   if (!kw) return catalogRows;
   return catalogRows.filter((row) => {
     const label = rowLabel(row);
-    const hay = [row.model_key, row.model, row.capacity, row.color, label, displayColor(row.color)].join(" ").toLowerCase();
+    const hay = [row.model_key, row.model, row.capacity, row.color, label, groupLabel(row), displayColor(row.color)].join(" ").toLowerCase();
     return hay.includes(kw);
   });
 }
@@ -420,14 +531,17 @@ function renderList() {
     </details>`;
   }).join("");
 
-  const duoCount = catalogRows.filter((row) => rowLabel(row) === "iPhone Duo").length;
   const bits = [
     monthStart,
+    categoryLabel(activeCategory),
     `目錄 ${totalSpecs} 規格`,
     `有行情 ${withData}`,
-    duoCount ? `iPhone Duo ${duoCount} 規格` : "目錄沒有 iPhone Duo",
-    "新機賣單",
+    `${categoryLabel(activeCategory)}賣單`,
   ];
+  if (activeCategory === "new") {
+    const duoCount = catalogRows.filter((row) => rowLabel(row) === "iPhone Duo").length;
+    bits.push(duoCount ? `iPhone Duo ${duoCount} 規格` : "目錄沒有 iPhone Duo");
+  }
   const excludedCount = allTicks.filter((tick) => tick.excluded).length;
   if (excludedCount) bits.push(`已剔除 ${excludedCount} 筆`);
   setStatus(bits.join(" · "));
@@ -441,15 +555,50 @@ function updateMonthChrome() {
 }
 
 async function refresh() {
+  const token = ++viewToken;
+  const category = activeCategory;
   updateMonthChrome();
   try {
-    setStatus("載入新機賣單中…");
-    allTicks = await fetchMonthTicks();
+    setStatus(`載入${categoryLabel(category)}賣單中…`);
+    const ticks = await fetchMonthTicks(category);
+    if (token !== viewToken) return;
+    allTicks = ticks;
     for (const tick of allTicks) rememberTickSpec(tick);
     ticksByModel = indexTicks(allTicks);
     renderList();
     if (openModelKey) renderQuoteModal(openModelKey);
   } catch (error) {
+    if (token !== viewToken) return;
+    allTicks = [];
+    ticksByModel = new Map();
+    if (newPriceList) newPriceList.innerHTML = "";
+    setStatus(error.message || String(error), "error");
+  }
+}
+
+async function switchCategory(category) {
+  if (!isMarketCategory(category) || category === activeCategory) return;
+  activeCategory = category;
+  syncMarketTabs();
+  closeQuotes();
+  const token = ++viewToken;
+  try {
+    setStatus(`載入${categoryLabel(category)}目錄中…`);
+    const catalog = await loadCatalog(category);
+    if (token !== viewToken) return;
+    catalogRows = catalog;
+    allTicks = [];
+    ticksByModel = new Map();
+    openModelKey = null;
+    setStatus(`載入${categoryLabel(category)}賣單中…`);
+    const ticks = await fetchMonthTicks(category);
+    if (token !== viewToken) return;
+    allTicks = ticks;
+    for (const tick of allTicks) rememberTickSpec(tick);
+    ticksByModel = indexTicks(allTicks);
+    renderList();
+  } catch (error) {
+    if (token !== viewToken) return;
     allTicks = [];
     ticksByModel = new Map();
     if (newPriceList) newPriceList.innerHTML = "";
@@ -465,6 +614,11 @@ async function shiftMonth(delta) {
 monthPrevBtn?.addEventListener("click", () => shiftMonth(-1));
 monthNextBtn?.addEventListener("click", () => { if (monthStart < currentMonth()) shiftMonth(1); });
 monthTodayBtn?.addEventListener("click", async () => { monthStart = currentMonth(); await refresh(); });
+marketTabs?.addEventListener("click", (event) => {
+  const btn = event.target.closest(".tab");
+  if (!btn?.dataset.category) return;
+  switchCategory(btn.dataset.category);
+});
 modelSearch?.addEventListener("input", () => renderList());
 onlyWithData?.addEventListener("change", () => renderList());
 newPriceList?.addEventListener("click", (event) => {
@@ -501,21 +655,23 @@ quoteList?.addEventListener("click", async (event) => {
   btn.textContent = isRestore ? "復原中…" : "剔除中…";
   try {
     if (isRule) {
-      const affected = await window._newRuleHandler(tick.raw_line);
+      const category = tickCategory(tick);
+      const affected = await window._newRuleHandler(tick.raw_line, category);
       const line = (tick.raw_line || "").trim();
       for (const item of allTicks) {
-        if ((item.raw_line || "").trim() === line) item.excluded = true;
+        if ((item.raw_line || "").trim() === line && tickCategory(item) === category) item.excluded = true;
       }
       rebuildAfterExclude();
-      alert(`已建立規則，這句原文的 ${affected} 筆新機報價全部剔除，以後再出現也會自動擋掉。`);
+      alert(`已建立規則，這句原文的 ${affected} 筆${categoryLabel(category)}報價全部剔除，以後再出現也會自動擋掉。`);
       return;
     }
     if (isRestore) {
+      const category = tickCategory(tick);
       const affected = await window._newRestoreHandler(tick);
       const line = (tick.raw_line || "").trim();
       if (affected.ruleRemoved && line) {
         for (const item of allTicks) {
-          if ((item.raw_line || "").trim() === line) item.excluded = false;
+          if ((item.raw_line || "").trim() === line && tickCategory(item) === category) item.excluded = false;
         }
       } else {
         tick.excluded = false;
@@ -533,29 +689,37 @@ quoteList?.addEventListener("click", async (event) => {
   }
 });
 
+function tickCategory(tick) {
+  const category = String(tick?.category || activeCategory || "").trim();
+  return isMarketCategory(category) ? category : activeCategory;
+}
+
 function installAdminHandlers() {
   const ticksTable = table("SUPABASE_TICKS_TABLE");
 
   window._newExcludeHandler = async function setTickExcluded(tickId, excluded = true) {
     if (!tickId) throw new Error("缺少 tick id");
+    const tick = allTicks.find((item) => String(item.id) === String(tickId));
+    const category = tickCategory(tick);
     const { data, error } = await supabaseClient
       .from(ticksTable)
       .update({ excluded })
       .eq("id", tickId)
-      .eq("category", "new")
+      .eq("category", category)
       .select("id");
     if (error) throw new Error(error.message || "更新失敗");
     if (!data?.length) throw new Error("沒有更新到任何列（檢查 Supabase RLS update policy）");
   };
 
-  window._newRuleHandler = async function excludeByRawLine(rawLine) {
+  window._newRuleHandler = async function excludeByRawLine(rawLine, category) {
     const line = (rawLine || "").trim();
+    const ruleCategory = isMarketCategory(category) ? category : activeCategory;
     if (!line) throw new Error("這筆沒有原文，只能用「只這筆」剔除");
 
     const { error: ruleError } = await supabaseClient
       .from(RULES_TABLE)
       .upsert(
-        { category: "new", raw_line: line, model_key: "", reason: "前台標記解析錯誤", active: true },
+        { category: ruleCategory, raw_line: line, model_key: "", reason: "前台標記解析錯誤", active: true },
         { onConflict: "category,raw_line,model_key" },
       );
     if (ruleError) {
@@ -568,7 +732,7 @@ function installAdminHandlers() {
     const { data, error } = await supabaseClient
       .from(ticksTable)
       .update({ excluded: true })
-      .eq("category", "new")
+      .eq("category", ruleCategory)
       .eq("trade_side", "sell")
       .eq("raw_line", line)
       .select("id");
@@ -577,24 +741,25 @@ function installAdminHandlers() {
   };
 
   window._newRestoreHandler = async function restoreTick(tick) {
+    const category = tickCategory(tick);
     const line = (tick.raw_line || "").trim();
     if (line) {
       const { data: rules, error: findError } = await supabaseClient
         .from(RULES_TABLE)
         .select("id")
-        .eq("category", "new")
+        .eq("category", category)
         .eq("raw_line", line)
         .eq("model_key", "");
       if (findError && findError.code !== "42P01") throw new Error(findError.message);
 
       if (rules?.length) {
         const { error: delError } = await supabaseClient
-          .from(RULES_TABLE).delete().eq("category", "new").eq("raw_line", line).eq("model_key", "");
+          .from(RULES_TABLE).delete().eq("category", category).eq("raw_line", line).eq("model_key", "");
         if (delError) throw new Error(delError.message || "規則刪除失敗");
         const { error } = await supabaseClient
           .from(ticksTable)
           .update({ excluded: false })
-          .eq("category", "new")
+          .eq("category", category)
           .eq("trade_side", "sell")
           .eq("raw_line", line);
         if (error) throw new Error(error.message || "復原失敗");
@@ -609,14 +774,18 @@ function installAdminHandlers() {
 async function boot() {
   try {
     initClient();
+    document.title = "新品行情（剔除模式）";
     if (isAdminMode()) {
       installAdminHandlers();
-      document.title = "新機行情（剔除模式）";
       const hint = document.querySelector(".used-week-hint");
-      if (hint) hint.textContent += " · Admin：可整句剔除／單筆剔除（category=new）";
+      if (hint && !hint.textContent.includes("依該筆 category")) {
+        hint.textContent += " · Admin：可整句剔除／單筆剔除（依該筆 category）";
+      }
     }
     monthStart = currentMonth();
-    catalogRows = await loadCatalog();
+    activeCategory = "new";
+    syncMarketTabs();
+    catalogRows = await loadCatalog(activeCategory);
     await refresh();
   } catch (error) {
     setStatus(error.message || String(error), "error");
