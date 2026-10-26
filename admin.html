@@ -7,7 +7,7 @@
   <title>審計後台</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=43" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="auth-gate.js?v=4"></script>
@@ -30,6 +30,83 @@
         <span class="audit-stat muted" id="statAutoHint"></span>
       </div>
     </header>
+
+    <section id="apifyStatusPanel" class="card ecom-panel">
+      <h2 class="section-title">Apify 執行狀態</h2>
+      <div id="apifyStatusBanner" class="ecom-status ecom-status--gray" role="status">
+        <span id="apifyStatusTitle">載入中…</span>
+        <span id="apifySourceBadge" class="ecom-badge" hidden>程式預設</span>
+      </div>
+      <p id="apifyStatusMeta" class="ecom-meta"></p>
+      <p id="apifyStatusNote" class="muted ecom-note"></p>
+      <button id="refreshApifyStatusBtn" type="button" class="btn-secondary">重新整理狀態</button>
+      <h3 class="ecom-subtitle">最近 20 筆</h3>
+      <div id="apifyRunLog" class="ecom-log muted">載入中…</div>
+    </section>
+
+    <section id="apifySchedulePanel" class="card ecom-panel">
+      <h2 class="section-title">本月蝦皮 Apify 活動日</h2>
+      <p class="muted ecom-note">只有活動日、而且落在這段時間裡，才會跑 Apify 直營四個關鍵字（蝦皮直營 iPhone、iPad、Apple Watch、AirPods），只留三家直營店。沒有這筆月份資料時，掃描沿用上面的程式預設。</p>
+      <div class="filters">
+        <div class="filter-row">
+          <label for="apifyMonth">月份</label>
+          <input id="apifyMonth" type="month" />
+        </div>
+        <div class="filter-row">
+          <label for="apifyTimeStart">時段開始</label>
+          <input id="apifyTimeStart" type="time" step="60" />
+        </div>
+        <div class="filter-row">
+          <label for="apifyTimeEnd">時段結束</label>
+          <input id="apifyTimeEnd" type="time" step="60" />
+        </div>
+        <label class="auto-approve-toggle ecom-enabled">
+          <input id="apifyEnabled" type="checkbox" checked />
+          啟用這個月
+        </label>
+      </div>
+      <div id="apifyRangeList" class="ecom-range-list"></div>
+      <div class="ecom-actions">
+        <button id="addApifyRangeBtn" type="button" class="btn-secondary">新增一段日期</button>
+        <button id="saveApifyScheduleBtn" type="button" class="btn-primary">儲存這個月</button>
+      </div>
+      <p class="muted ecom-note">日期是當月幾號，含頭含尾，可多段。時間存 24 小時 HH:MM，時區 Asia/Taipei。結束早於開始時，視為跨過午夜。</p>
+      <p id="apifyScheduleMsg" class="ecom-msg" role="status"></p>
+    </section>
+
+    <section id="ecomMarketPanel" class="card ecom-panel">
+      <h2 class="section-title">電商對比行情</h2>
+      <p class="muted ecom-note">自動行情讀 iphone_prices：同一品類、同一型號，近三天賣價裡最近一天的最低價。手動有填就用手動，清除會刪掉覆寫，不會把價格改成 0。</p>
+      <div class="filters">
+        <div class="filter-row">
+          <label for="ecomMarketCategory">品類</label>
+          <select id="ecomMarketCategory">
+            <option value="new">新機</option>
+            <option value="new_ipad">iPad</option>
+            <option value="accessory">配件</option>
+          </select>
+        </div>
+        <div class="filter-row grow">
+          <label for="ecomMarketSearch">搜尋型號</label>
+          <input id="ecomMarketSearch" type="search" placeholder="顯示名或 model_key" />
+        </div>
+      </div>
+      <p id="ecomMarketMsg" class="ecom-msg" role="status"></p>
+      <div class="ecom-market-wrap">
+        <table class="ecom-market-table">
+          <thead>
+            <tr>
+              <th>顯示名</th>
+              <th>自動行情</th>
+              <th>採用</th>
+              <th>手動行情</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ecomMarketList"></tbody>
+        </table>
+      </div>
+    </section>
 
     <section id="reviewPanel">
       <section class="card brand-manager">
@@ -108,5 +185,6 @@
     </section>
   </div>
   <script src="admin.js?v=18"></script>
+  <script src="ecom-admin.js?v=1"></script>
 </body>
 </html>
