@@ -48,12 +48,36 @@
     : null;
 
   // 可多台裝置同時登入的帳號（Email 小寫後的 SHA-256，原始碼裡不放明文）
+  // 目前：rsz975efb@gmail.com（管理員）
   const MULTI_DEVICE_EMAIL_SHA256 = ["ecdf18b2dc058ef68e8bc4310571971f6e0cafc822134b05e2c0b1582dc36efa"];
 
+  async function sha256Hex(text) {
+    if (globalThis.crypto?.subtle?.digest) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    // 極少數環境沒有 subtle 時不要誤判成一般帳號（會 signOut others）
+    return "";
+  }
+
   async function isMultiDeviceEmail(email) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email));
-    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+    const normalized = String(email || "").trim().toLowerCase();
+    if (!normalized) return false;
+    const hex = await sha256Hex(normalized);
+    // 算不出 hash 時寧可當多裝置，避免誤呼叫 signOut(others)
+    if (!hex) return true;
     return MULTI_DEVICE_EMAIL_SHA256.includes(hex);
+  }
+
+  async function currentSessionIsMultiDevice() {
+    if (!client) return false;
+    try {
+      const { data } = await client.auth.getSession();
+      const email = data?.session?.user?.email || "";
+      return isMultiDeviceEmail(email);
+    } catch (_) {
+      return false;
+    }
   }
 
   let visitLogged = false;
@@ -165,17 +189,33 @@
     return /retryable|network|fetch|timeout/i.test(`${error?.name || ""} ${error?.message || ""}`);
   }
 
-  // 伺服器端確認登入還有效；被其他裝置登入擠掉時鎖回登入畫面（離線不踢人）
+  // 伺服器端確認登入還有效；一般帳號被其他裝置擠掉時鎖回登入畫面（離線不踢人）
+  // 管理員（多裝置白名單）先嘗試續期，不要誤顯示「其他裝置」把人擋在外面
   async function verifyStillValid() {
     if (!client || root.classList.contains(LOCK_CLASS)) return;
     try {
-      const { error } = await client.auth.getUser();
+      const multi = await currentSessionIsMultiDevice();
+      let { error } = await client.auth.getUser();
       if (!error || isNetworkError(error)) return;
-      if (error.status === 401 || error.status === 403 || /session|jwt|token/i.test(error.message || "")) {
+
+      const authDead =
+        error.status === 401 ||
+        error.status === 403 ||
+        /session|jwt|token/i.test(error.message || "");
+      if (!authDead) return;
+
+      if (multi) {
+        const { data, error: refreshError } = await client.auth.refreshSession();
+        if (data?.session && !refreshError) return;
         await client.auth.signOut({ scope: "local" }).catch(() => {});
         lock();
-        showLoginForm("這個帳號已在其他裝置登入，請重新登入");
+        showLoginForm("登入已過期，請重新登入");
+        return;
       }
+
+      await client.auth.signOut({ scope: "local" }).catch(() => {});
+      lock();
+      showLoginForm("這個帳號已在其他裝置登入，請重新登入");
     } catch (_) {}
   }
 
