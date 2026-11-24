@@ -163,9 +163,32 @@ function formatMySellHtml(modelKey) {
   return `<span class="my-sell-price">${text}</span>`;
 }
 
+/** 點開明細時：同一人跨群重複貼只留一筆（最新），不改列表行情統計。 */
+function collapseTicksByPerson(ticks) {
+  const byPerson = new Map();
+  for (const tick of ticks) {
+    const mid = (tick.from_mid || "").trim();
+    const name = (tick.sender_name || "").trim();
+    const key = mid ? `mid:${mid}` : name ? `name:${name}` : `anon:${tick.id || Math.random()}`;
+    const prev = byPerson.get(key);
+    if (!prev) {
+      byPerson.set(key, { tick, groups: new Set([(tick.chat_name || "").trim() || "群組未知"]) });
+      continue;
+    }
+    prev.groups.add((tick.chat_name || "").trim() || "群組未知");
+    const prevAt = String(prev.tick.quoted_at || prev.tick.quote_date || "");
+    const nextAt = String(tick.quoted_at || tick.quote_date || "");
+    if (nextAt > prevAt) prev.tick = tick;
+  }
+  return [...byPerson.values()]
+    .map(({ tick, groups }) => ({ ...tick, _groupCount: groups.size }))
+    .sort((a, b) => String(b.quoted_at || b.quote_date || "").localeCompare(String(a.quoted_at || a.quote_date || "")));
+}
+
 function renderQuoteModal(modelKey) {
   const hit = resolvedByModel.get(modelKey);
   const ticks = hit?.ticks || [];
+  const displayTicks = collapseTicksByPerson(ticks);
   const row = CATALOG_ROWS.find((r) => r.model_key === modelKey);
   const title = [row?.model, row?.capacity, row?.color].filter(Boolean).join(" ") || modelKey;
   if (usedQuoteTitle) usedQuoteTitle.textContent = title;
@@ -177,13 +200,15 @@ function renderQuoteModal(modelKey) {
     usedQuoteSubtitle.textContent = `${monthStart} · ${peer}`;
   }
   if (!usedQuoteList) return;
-  if (!ticks.length) {
+  if (!displayTicks.length) {
     usedQuoteList.innerHTML = '<p class="muted">這個月份沒有資料</p>';
     return;
   }
-  usedQuoteList.innerHTML = ticks.map((t) => {
+  usedQuoteList.innerHTML = displayTicks.map((t) => {
     const mid = (t.from_mid || "").trim();
     const who = (t.sender_name || "").trim() || (mid ? `未知(${mid.slice(-8)})` : "未知");
+    const groupLabel = (t.chat_name || "").trim() || "群組未知";
+    const groupExtra = t._groupCount > 1 ? ` 等${t._groupCount}群` : "";
     const line = (t.raw_line || "").trim();
     const body = line
       ? `<pre class="used-quote-raw">${escapeHtml(line)}</pre>`
@@ -192,7 +217,7 @@ function renderQuoteModal(modelKey) {
     <article class="used-quote-card">
       <div class="used-quote-meta">
         <span class="used-quote-price">$${escapeHtml(formatPrice(t.price))}</span>
-        ${escapeHtml(formatTickWhen(t))} · ${escapeHtml(who)} · ${escapeHtml((t.chat_name || "").trim() || "群組未知")}
+        ${escapeHtml(formatTickWhen(t))} · ${escapeHtml(who)} · ${escapeHtml(groupLabel)}${escapeHtml(groupExtra)}
       </div>
       ${body}
     </article>`;
