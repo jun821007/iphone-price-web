@@ -224,6 +224,9 @@
       showLoginForm();
       return;
     }
+    // 本機已有 session 就先開鎖，避免等 getSession 網路往返才看到畫面
+    const hadLocal = hasStoredSession();
+    if (hadLocal) unlock();
     try {
       const { data, error } = await client.auth.getSession();
       if (data?.session) {
@@ -232,16 +235,17 @@
         return;
       }
       // 離線時續期會失敗，但本機有登入紀錄就不要把人踢出去；被登出（續期被拒）就不放行
-      if (error && isNetworkError(error) && hasStoredSession()) {
+      if (error && isNetworkError(error) && hadLocal) {
         unlock();
         return;
       }
     } catch (_) {
-      if (hasStoredSession()) {
+      if (hadLocal) {
         unlock();
         return;
       }
     }
+    lock();
     showLoginForm();
   }
 

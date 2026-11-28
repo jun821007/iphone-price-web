@@ -1555,6 +1555,7 @@ async function loadDashboard(selectedDate) {
   const ticksTable = table("SUPABASE_TICKS_TABLE") || "quote_ticks";
   const isBuy = activeTradeSide === "buy";
 
+  // 儀表板／排行用不需全量 ticks；上限壓低可明顯縮短首屏後段等待
   const tickQuery = isBuy
     ? Promise.resolve({ data: [], error: null })
     : supabaseClient
@@ -1563,7 +1564,7 @@ async function loadDashboard(selectedDate) {
       .eq("quote_date", selectedDate)
       .eq("trade_side", "sell")
       .eq("excluded", false)
-      .limit(10000);
+      .limit(4000);
 
   const [
     { data: stats, error: statsError },
@@ -1764,19 +1765,41 @@ function setActiveCategory(category) {
   applyFilters();
 }
 
+function taipeiDateOffset(days) {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const y = Number(parts.find((p) => p.type === "year")?.value);
+  const m = Number(parts.find((p) => p.type === "month")?.value);
+  const d = Number(parts.find((p) => p.type === "day")?.value);
+  const utc = Date.UTC(y, m - 1, d + days);
+  return new Date(utc).toISOString().slice(0, 10);
+}
+
 async function loadAvailableDates({ preferDate = "" } = {}) {
   const statsTable = table("SUPABASE_STATS_TABLE");
   const keep = preferDate || dateSelect?.value || "";
-  const [{ data: priceDates, error: priceError }, { data: statDates, error: statError }] = await Promise.all([
-    supabaseClient.from(table("SUPABASE_TABLE")).select("quote_date").order("quote_date", { ascending: false }),
-    supabaseClient.from(statsTable).select("quote_date").order("quote_date", { ascending: false }),
-  ]);
-  if (priceError) throw priceError;
-  if (statError && statError.code !== "42P01") throw statError;
-  const dates = [...new Set([
-    ...(priceDates || []).map((r) => r.quote_date),
-    ...(statDates || []).map((r) => r.quote_date),
-  ])].sort().reverse();
+  // daily_run_stats 一天一列，遠小於從 iphone_prices 拉全部 quote_date（每規格一列）
+  let dates = [];
+  const { data: statDates, error: statError } = await supabaseClient
+    .from(statsTable)
+    .select("quote_date")
+    .order("quote_date", { ascending: false });
+  if (!statError && statDates?.length) {
+    dates = [...new Set(statDates.map((r) => r.quote_date).filter(Boolean))].sort().reverse();
+  } else {
+    if (statError && statError.code !== "42P01") throw statError;
+    const cutoff = taipeiDateOffset(-120);
+    const { data: priceDates, error: priceError } = await supabaseClient
+      .from(table("SUPABASE_TABLE"))
+      .select("quote_date")
+      .gte("quote_date", cutoff)
+      .order("quote_date", { ascending: false })
+      .limit(3000);
+    if (priceError) throw priceError;
+    dates = [...new Set((priceDates || []).map((r) => r.quote_date).filter(Boolean))].sort().reverse();
+  }
   dateSelect.innerHTML = dates.length ? "" : '<option value="">尚無資料</option>';
   for (const day of dates) {
     const opt = document.createElement("option");
@@ -1806,31 +1829,75 @@ async function loadBuyDemandForDate(selectedDate) {
   allBuyDemandRows = aggregateBuyDemandRows(buyDemandTicks);
 }
 
+const DAY_CACHE_PREFIX = "ipw-day-v1:";
+
+function readDayCache(selectedDate) {
+  try {
+    const raw = sessionStorage.getItem(DAY_CACHE_PREFIX + selectedDate);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.rows)) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeDayCache(selectedDate, rows, syncTime) {
+  try {
+    sessionStorage.setItem(DAY_CACHE_PREFIX + selectedDate, JSON.stringify({
+      rows,
+      syncTime: syncTime && !Number.isNaN(syncTime.getTime()) ? syncTime.toISOString() : null,
+      savedAt: Date.now(),
+    }));
+  } catch (_) {
+    // quota / private mode：略過快取即可
+  }
+}
+
 async function loadRowsForDate(selectedDate, { quiet = false } = {}) {
   if (!selectedDate) return;
-  if (!quiet) setPriceViewMessage("載入中…");
   if (activeTradeSide === "buy") {
-    await loadBuyDemandForDate(selectedDate);
-    latestSyncTime = await fetchLatestSyncTime(selectedDate);
-    await loadDashboard(selectedDate);
+    if (!quiet) setPriceViewMessage("載入中…");
+    const [, syncTime] = await Promise.all([
+      loadBuyDemandForDate(selectedDate),
+      fetchLatestSyncTime(selectedDate),
+    ]);
+    latestSyncTime = syncTime;
     if (!allBuyDemandRows.length) {
       if (!quiet) setPriceViewMessage("今天尚無徵收需求資料（請確認已執行 migration v7 並重跑 run.py）");
     } else {
       applyFilters();
     }
     updateLastUpdated(latestSyncTime, selectedDate);
+    await loadDashboard(selectedDate);
     return;
   }
 
-  const { data, error } = await supabaseClient
-    .from(table("SUPABASE_TABLE"))
-    .select("id,category,model_key,model,capacity,color,msrp,top_discount_zhe,top_price,total_quotes,price_stats,trade_side,chat_name,updated_at,device_type,condition_state,brand")
-    .eq("quote_date", selectedDate)
-    .order("category").order("model_key");
+  // 有上次同日快取就先畫出來，網路回來再覆蓋（體感開頁較快）
+  const cached = !quiet ? readDayCache(selectedDate) : null;
+  if (cached?.rows?.length) {
+    allRows = cached.rows;
+    latestSyncTime = parseTimestamp(cached.syncTime);
+    applyFilters();
+    updateLastUpdated(latestSyncTime, selectedDate);
+  } else if (!quiet) {
+    setPriceViewMessage("載入中…");
+  }
+
+  const [{ data, error }, syncTime] = await Promise.all([
+    supabaseClient
+      .from(table("SUPABASE_TABLE"))
+      .select("id,category,model_key,model,capacity,color,msrp,top_discount_zhe,top_price,total_quotes,price_stats,trade_side,chat_name,updated_at,device_type,condition_state,brand")
+      .eq("quote_date", selectedDate)
+      .order("category").order("model_key"),
+    fetchLatestSyncTime(selectedDate),
+  ]);
   if (error) throw error;
   allRows = data || [];
-  latestSyncTime = await fetchLatestSyncTime(selectedDate);
-  await loadDashboard(selectedDate);
+  latestSyncTime = syncTime;
+
+  // 先出報價表，儀表板（含大量 quote_ticks）接著補
   if (!allRows.length) {
     const statsTable = table("SUPABASE_STATS_TABLE");
     const { data: stats } = await supabaseClient
@@ -1847,8 +1914,10 @@ async function loadRowsForDate(selectedDate, { quiet = false } = {}) {
     }
   } else {
     applyFilters();
+    writeDayCache(selectedDate, allRows, latestSyncTime);
   }
   updateLastUpdated(latestSyncTime, selectedDate);
+  await loadDashboard(selectedDate);
 }
 
 function syncTimeKey(date) {
@@ -1882,10 +1951,10 @@ function startAutoRefresh() {
 async function boot() {
   try {
     initClient();
-    await loadTaxonomy();
-    await loadModelCatalog();
-    await loadAvailableDates();
+    // 型錄只在點開分類／明細才需要，不要擋首屏
+    await Promise.all([loadTaxonomy(), loadAvailableDates()]);
     if (dateSelect.value) await loadRowsForDate(dateSelect.value);
+    loadModelCatalog().catch(() => {});
     startAutoRefresh();
   } catch (error) {
     setPriceViewMessage(error.message, "error");
